@@ -1,0 +1,862 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - The Açaí Truck Admin{% endblock %}
+
+{% block nav_settings %}active{% endblock %}
+
+{% block page_title %}Bot Settings{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="page-header">
+    <p class="page-subtitle">Adjust menu options, branding, and pricing</p>
+</div>
+
+<div class="grid-cols-2 mb-6">
+    
+</div>
+
+<!-- Order Verification Message -->
+<div class="card mb-6">
+    <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-chat-dots"></i> Order Verification Message</h3>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">This message is sent to customers via Telegram when you verify their payment. You can use the following variables which will be automatically replaced:</p>
+        <div class="alert alert-info small mb-3">
+            <strong>Available Variables:</strong><br>
+            <code>{customer_name}</code> - Customer's name<br>
+            <code>{order_id}</code> - Order ID<br>
+            <code>{total_price}</code> - Order total (formatted as currency)<br>
+            <code>{delivery_location}</code> - Delivery location (for delivery orders)<br>
+            <code>{delivery_time}</code> - Delivery date/time (for delivery orders)
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Verification Message Template</label>
+            <textarea class="form-control" id="verificationMessage" rows="4" placeholder="Hi {customer_name}, your order #{order_id} has been confirmed! Total: {total_price}. Thank you!"></textarea>
+            <small class="text-muted">This message will be sent in Telegram when the admin verifies an order payment.</small>
+        </div>
+        <div class="mb-3">
+            <label class="form-label small text-muted">Preview</label>
+            <div class="border rounded p-3 bg-light">
+                <strong>To: Jane Doe</strong>
+                <p id="verificationMessagePreview" class="mb-0" style="white-space: pre-wrap; word-wrap: break-word;">Hi Jane Doe, your order #ORD123 has been confirmed! Total: $8.00. Thank you!</p>
+            </div>
+        </div>
+        <button class="btn-success" id="saveVerificationMessageBtn">
+            <i class="bi bi-save"></i> Save Message
+        </button>
+    </div>
+</div>{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const brandingData = {{ branding|tojson }};
+const menuGroupsData = {{ menu_groups|tojson }};
+const pricingData = {{ pricing|tojson }};
+
+let menuGroups = Array.isArray(menuGroupsData) ? JSON.parse(JSON.stringify(menuGroupsData)) : [];
+let branding = Object.assign({}, brandingData || {});
+let pricing = Object.assign({}, pricingData || {});
+
+const menuGroupsContainer = document.getElementById('menuGroupsContainer');
+const brandingTitleInput = document.getElementById('brandingTitle');
+const brandingSubtitleInput = document.getElementById('brandingSubtitle');
+const brandingPreviewTitle = document.getElementById('brandingPreviewTitle');
+const brandingPreviewSubtitle = document.getElementById('brandingPreviewSubtitle');
+const brandingPreviewImage = document.getElementById('brandingPreviewImage');
+const brandingImagePlaceholder = document.getElementById('brandingPreviewImagePlaceholder');
+const brandingImageFileInput = document.getElementById('brandingImageFile');
+const brandingImageUploadStatus = document.getElementById('brandingImageUploadStatus');
+const clearBrandingImageBtn = document.getElementById('clearBrandingImageBtn');
+
+// Track the current branding image URL
+let currentBrandingImageUrl = branding.image_url || '';
+const pricingCurrencyLabel = document.getElementById('pricingCurrencyLabel');
+const pricePerBowlInput = document.getElementById('pricePerBowl');
+const currencyInput = document.getElementById('currency');
+
+const saveMenuGroupsBtn = document.getElementById('saveMenuGroupsBtn');
+const addMenuGroupBtn = document.getElementById('addMenuGroupBtn');
+const saveBrandingBtn = document.getElementById('saveBrandingBtn');
+const savePricingBtn = document.getElementById('savePricingBtn');
+const addStoreBtn = document.getElementById('addStoreBtn');
+const saveStoreBtn = document.getElementById('saveStoreBtn');
+const verificationMessageInput = document.getElementById('verificationMessage');
+const saveVerificationMessageBtn = document.getElementById('saveVerificationMessageBtn');
+const verificationMessagePreview = document.getElementById('verificationMessagePreview');
+
+const daysOfWeek = [
+    { key: 'monday', label: 'Monday' },
+    { key: 'tuesday', label: 'Tuesday' },
+    { key: 'wednesday', label: 'Wednesday' },
+    { key: 'thursday', label: 'Thursday' },
+    { key: 'friday', label: 'Friday' },
+    { key: 'saturday', label: 'Saturday' },
+    { key: 'sunday', label: 'Sunday' },
+];
+
+function escapeHtml(value = '') {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function slugify(value, fallback = 'group') {
+    const base = (value || '')
+        .toString()
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return base || fallback;
+}
+
+function makeUniqueSlug(base, used) {
+    let slug = base;
+    let counter = 2;
+    while (used.has(slug)) {
+        slug = `${base}-${counter++}`;
+    }
+    used.add(slug);
+    return slug;
+}
+
+function generateClientGroupId(seed = '') {
+    const used = new Set(menuGroups.map(g => g.id).filter(Boolean));
+    const base = slugify(seed, `group-${used.size + 1}`);
+    return makeUniqueSlug(base, used);
+}
+
+function renderBrandingPreview() {
+    if (brandingPreviewTitle) {
+        brandingPreviewTitle.textContent = brandingTitleInput.value.trim() || '🍧 Welcome to Acai Supper Bot!';
+    }
+    if (brandingPreviewSubtitle) {
+        brandingPreviewSubtitle.textContent = brandingSubtitleInput.value.trim();
+    }
+}
+
+function updateBrandingImagePreview() {
+    if (!brandingPreviewImage || !brandingImagePlaceholder) return;
+    const url = currentBrandingImageUrl.trim();
+    if (url) {
+        brandingPreviewImage.src = url;
+        brandingPreviewImage.style.display = 'block';
+        brandingImagePlaceholder.style.display = 'none';
+        if (clearBrandingImageBtn) {
+            clearBrandingImageBtn.disabled = false;
+        }
+    } else {
+        brandingPreviewImage.removeAttribute('src');
+        brandingPreviewImage.style.display = 'none';
+        brandingImagePlaceholder.style.display = 'flex';
+        if (clearBrandingImageBtn) {
+            clearBrandingImageBtn.disabled = true;
+        }
+    }
+}
+
+const BRANDING_IMAGE_MAX_SIZE = 2 * 1024 * 1024;
+const BRANDING_UPLOAD_HELP_TEXT = 'PNG/JPG/WebP up to 2MB. Uploading will automatically update the preview and save the image.';
+
+function setBrandingUploadState(isUploading) {
+    if (brandingImageFileInput) {
+        brandingImageFileInput.disabled = isUploading;
+    }
+    if (brandingImageUploadStatus) {
+        brandingImageUploadStatus.textContent = isUploading ? 'Uploading image…' : BRANDING_UPLOAD_HELP_TEXT;
+    }
+}
+
+async function handleBrandingImageFileChange(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    if (!file.type || !file.type.startsWith('image/')) {
+        showToast('Please choose an image file (PNG/JPG/WebP).', 'warning');
+        event.target.value = '';
+        return;
+    }
+
+    if (file.size > BRANDING_IMAGE_MAX_SIZE) {
+        showToast('Image must be 2MB or smaller.', 'danger');
+        event.target.value = '';
+        return;
+    }
+
+    setBrandingUploadState(true);
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/settings/branding/image', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success || !data.url) {
+            throw new Error(data.detail || data.message || 'Failed to upload branding image');
+        }
+
+        currentBrandingImageUrl = data.url;
+        updateBrandingImagePreview();
+        showToast('Image uploaded. Don\'t forget to save branding.', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Unable to upload image', 'danger');
+    } finally {
+        setBrandingUploadState(false);
+        event.target.value = '';
+    }
+}
+
+function renderMenuGroups() {
+    if (!menuGroupsContainer) return;
+    if (!Array.isArray(menuGroups) || menuGroups.length === 0) {
+        menuGroups = [{
+            id: generateClientGroupId('option-group'),
+            title: 'Option Group',
+            options: ['']
+        }];
+    }
+
+    menuGroupsContainer.innerHTML = menuGroups.map((group, index) => {
+        const safeTitle = escapeHtml(group.title || '');
+        const options = (group.options && group.options.length ? group.options : ['']);
+        const optionsHtml = options.map((option, optionIndex) => {
+            const safeOption = escapeHtml(option || '');
+            return `
+                <div class="input-group input-group-sm mb-2" data-option-index="${optionIndex}">
+                    <input type="text" class="form-control option-input" value="${safeOption}" placeholder="Option name">
+                    <button class="btn btn-outline-danger" type="button" onclick="removeMenuOption(${index}, ${optionIndex})">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="col-lg-6" data-group-index="${index}">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div class="w-100 me-2">
+                            <label class="form-label small text-muted">Group Title</label>
+                            <input type="text" class="form-control form-control-sm group-title" value="${safeTitle}" placeholder="e.g., Fruit Toppings">
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger ms-2" type="button" onclick="removeMenuGroup(${index})" title="Remove group">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <label class="form-label small text-muted">Options</label>
+                        <div class="menu-options" data-options-container>
+                            ${optionsHtml}
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" type="button" onclick="addMenuOption(${index})">
+                            <i class="bi bi-plus"></i> Add Option
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function collectMenuGroupValues() {
+    if (!menuGroupsContainer) return;
+    const cards = menuGroupsContainer.querySelectorAll('[data-group-index]');
+    const currentGroups = menuGroups.slice();
+    const usedIds = new Set();
+
+    const updatedGroups = Array.from(cards).map(card => {
+        const domIndex = parseInt(card.getAttribute('data-group-index'), 10);
+        const original = currentGroups[domIndex] || {};
+        const titleInput = card.querySelector('.group-title');
+        const optionInputs = card.querySelectorAll('.option-input');
+        const title = titleInput ? titleInput.value.trim() : '';
+        const options = Array.from(optionInputs).map(input => input.value.trim());
+
+        let id = (original.id || '').trim();
+        if (!id) {
+            const base = slugify(title || `group-${domIndex + 1}`);
+            id = makeUniqueSlug(base, usedIds);
+        } else if (usedIds.has(id)) {
+            id = makeUniqueSlug(id, usedIds);
+        } else {
+            usedIds.add(id);
+        }
+
+        return { id, title, options };
+    });
+
+    menuGroups = updatedGroups;
+}
+
+function addMenuGroup() {
+    collectMenuGroupValues();
+    menuGroups.push({
+        id: generateClientGroupId('option-group'),
+        title: '',
+        options: ['']
+    });
+    renderMenuGroups();
+}
+
+function removeMenuGroup(index) {
+    collectMenuGroupValues();
+    if (menuGroups.length <= 1) {
+        showToast('At least one option group is required', 'warning');
+        return;
+    }
+    menuGroups.splice(index, 1);
+    renderMenuGroups();
+}
+
+function addMenuOption(groupIndex) {
+    collectMenuGroupValues();
+    if (!menuGroups[groupIndex]) return;
+    menuGroups[groupIndex].options.push('');
+    renderMenuGroups();
+}
+
+function removeMenuOption(groupIndex, optionIndex) {
+    collectMenuGroupValues();
+    const group = menuGroups[groupIndex];
+    if (!group) return;
+    if ((group.options || []).length <= 1) {
+        showToast('Each group must have at least one option', 'warning');
+        return;
+    }
+    group.options.splice(optionIndex, 1);
+    renderMenuGroups();
+}
+
+async function saveMenuGroups(event) {
+    if (event) event.preventDefault();
+    collectMenuGroupValues();
+
+    if (!menuGroups.length) {
+        showToast('Add at least one option group', 'danger');
+        return;
+    }
+
+    const usedIds = new Set();
+    const sanitizedGroups = [];
+    for (const group of menuGroups) {
+        const title = (group.title || '').trim();
+        if (!title) {
+            showToast('Each group must have a title', 'danger');
+            return;
+        }
+        const options = (group.options || []).map(option => option.trim()).filter(Boolean);
+        if (!options.length) {
+            showToast(`"${title}" must contain at least one option`, 'danger');
+            return;
+        }
+
+        let id = (group.id || '').trim();
+        if (!id) {
+            id = slugify(title, `group-${sanitizedGroups.length + 1}`);
+        } else {
+            id = slugify(id, id);
+        }
+        id = makeUniqueSlug(id, usedIds);
+
+        sanitizedGroups.push({ id, title, options });
+    }
+
+    const button = saveMenuGroupsBtn;
+    if (!button) return;
+    button.disabled = true;
+    showLoading(button);
+
+    try {
+        const response = await fetch('/api/settings/menu-groups', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groups: sanitizedGroups })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.detail || payload.message || 'Failed to update menu options');
+        }
+        menuGroups = sanitizedGroups.map(group => ({ ...group, options: [...group.options] }));
+        renderMenuGroups();
+        showToast('Menu options updated', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Unable to save menu options', 'danger');
+    } finally {
+        hideLoading(button);
+        button.disabled = false;
+    }
+}
+
+async function saveBranding(event) {
+    if (event) event.preventDefault();
+    const payload = {
+        title: brandingTitleInput.value.trim(),
+        subtitle: brandingSubtitleInput.value.trim(),
+        image_url: currentBrandingImageUrl.trim()
+    };
+
+    const button = saveBrandingBtn;
+    if (!button) return;
+    button.disabled = true;
+    showLoading(button);
+
+    try {
+        const response = await fetch('/api/settings/branding', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.detail || data.message || 'Failed to update branding');
+        }
+        branding = { ...payload };
+        renderBrandingPreview();
+        updateBrandingImagePreview();
+        showToast('Branding updated', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Unable to save branding', 'danger');
+    } finally {
+        hideLoading(button);
+        button.disabled = false;
+    }
+}
+
+async function savePricing(event) {
+    if (event) event.preventDefault();
+    const priceValue = parseFloat(pricePerBowlInput.value || '0');
+    const currencyValue = (currencyInput.value || '').trim().toUpperCase();
+
+    if (!currencyValue || currencyValue.length !== 3) {
+        showToast('Currency must be a 3-letter code', 'danger');
+        return;
+    }
+
+    const button = savePricingBtn;
+    if (!button) return;
+    button.disabled = true;
+    showLoading(button);
+
+    try {
+        const response = await fetch('/api/settings/pricing', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: { price_per_bowl: priceValue, currency: currencyValue } })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.detail || data.message || 'Failed to update pricing');
+        }
+        pricing.currency = currencyValue;
+        pricing.price_per_bowl = priceValue;
+        pricingCurrencyLabel.textContent = currencyValue;
+        showToast('Pricing updated', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Unable to save pricing', 'danger');
+    } finally {
+        hideLoading(button);
+        button.disabled = false;
+    }
+}
+
+function formatOperatingHours(hours) {
+    if (!hours || typeof hours !== 'object') {
+        return '<span class="text-muted">Not configured</span>';
+    }
+    const parts = [];
+    daysOfWeek.forEach(day => {
+        const detail = hours[day.key] || {};
+        const isClosed = detail.open === 'closed' || detail.closed === true;
+        if (isClosed) {
+            return;
+        }
+        if (detail.open && detail.close) {
+            parts.push(`<span class="badge bg-light text-dark me-1 mb-1">${day.label.slice(0, 3)} ${detail.open}-${detail.close}</span>`);
+        }
+    });
+    return parts.length ? parts.join('') : '<span class="text-muted">All days closed</span>';
+}
+
+        const safeName = escapeHtml(store.name || 'Untitled Store');
+        const safeAddress = escapeHtml(store.address || '-');
+        const storeId = store.store_id || '';
+        const storeIdLiteral = JSON.stringify(storeId);
+        const hoursHtml = formatOperatingHours(store.operating_hours);
+        const codeHtml = storeId ? `<code>${escapeHtml(storeId)}</code>` : '';
+        return `
+            <tr>
+                <td><strong>${safeName}</strong><br>${codeHtml}</td>
+                <td>${safeAddress || '-'}</td>
+                <td>${hoursHtml}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary store-edit-btn" type="button" data-store-id="${escapeHtml(storeId)}">
+                            <i class="bi bi-pencil"></i> Edit
+                        </button>
+                        <button class="btn btn-outline-danger store-remove-btn" type="button" data-store-id="${escapeHtml(storeId)}">
+                            <i class="bi bi-trash"></i> Remove
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // Attach event listeners to the newly created buttons
+    document.querySelectorAll('.store-edit-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const storeId = this.getAttribute('data-store-id');
+            openStoreModal(storeId);
+        });
+    });
+
+    document.querySelectorAll('.store-remove-btn').forEach(btn => {
+        btn.addEventListener('click', function(event) {
+            const storeId = this.getAttribute('data-store-id');
+            removeStore(storeId, event);
+        });
+    });
+}
+
+const storeModalElement = document.getElementById('storeModal');
+const storeModal = storeModalElement ? new bootstrap.Modal(storeModalElement) : null;
+const storeHoursContainer = document.getElementById('storeHoursFields');
+
+function buildHoursRow(day, values = {}) {
+    const isClosed = values.open === 'closed' || values.closed === true;
+    const open = isClosed ? '' : (values.open || '');
+    const close = isClosed ? '' : (values.close || '');
+    return `
+        <div class="row g-2 align-items-center mb-2" data-day="${day.key}">
+            <div class="col-3 text-capitalize fw-semibold">${day.label}</div>
+            <div class="col-3">
+                <input type="time" class="form-control form-control-sm" data-field="open" value="${open}" ${isClosed ? 'disabled' : ''}>
+            </div>
+            <div class="col-3">
+                <input type="time" class="form-control form-control-sm" data-field="close" value="${close}" ${isClosed ? 'disabled' : ''}>
+            </div>
+            <div class="col-3 form-check">
+                <input class="form-check-input" type="checkbox" data-field="closed" ${isClosed ? 'checked' : ''}>
+                <label class="form-check-label small">Closed</label>
+            </div>
+        </div>
+    `;
+}
+
+function renderHoursFields(existingHours) {
+    if (!storeHoursContainer) return;
+    storeHoursContainer.innerHTML = daysOfWeek.map(day => buildHoursRow(day, existingHours ? existingHours[day.key] : {})).join('');
+    storeHoursContainer.querySelectorAll('[data-field="closed"]').forEach(checkbox => {
+        checkbox.addEventListener('change', event => {
+            const row = event.target.closest('[data-day]');
+            const openInput = row.querySelector('[data-field="open"]');
+            const closeInput = row.querySelector('[data-field="close"]');
+            const disabled = event.target.checked;
+            openInput.disabled = disabled;
+            closeInput.disabled = disabled;
+            if (disabled) {
+                openInput.value = '';
+                closeInput.value = '';
+            }
+        });
+    });
+}
+
+function capitalize(word) {
+    if (!word) return '';
+    return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+function collectStoreHours() {
+    if (!storeHoursContainer) return {};
+    const rows = storeHoursContainer.querySelectorAll('[data-day]');
+    const result = {};
+
+    rows.forEach(row => {
+        const day = row.getAttribute('data-day');
+        const openInput = row.querySelector('[data-field="open"]');
+        const closeInput = row.querySelector('[data-field="close"]');
+        const closed = row.querySelector('[data-field="closed"]').checked;
+
+        const open = openInput.value;
+        const close = closeInput.value;
+
+        if (closed || (!open && !close)) {
+            result[day] = { open: 'closed', close: 'closed' };
+            return;
+        }
+
+        if (!open || !close) {
+            throw new Error(`Please provide both opening and closing times for ${capitalize(day)} or mark it as closed.`);
+        }
+
+        if (open >= close) {
+            throw new Error(`${capitalize(day)} closing time must be after opening time.`);
+        }
+
+        result[day] = { open, close };
+    });
+
+    return result;
+}
+
+function openStoreModal(storeId = '') {
+    if (!storeModal) return;
+    document.getElementById('storeModalId').value = storeId || '';
+    const storeNameInput = document.getElementById('storeName');
+    const storeAddressInput = document.getElementById('storeAddress');
+
+    if (storeId) {
+        if (!store) {
+            showToast('Store not found', 'danger');
+            return;
+        }
+        storeNameInput.value = store.name || '';
+        storeAddressInput.value = store.address || '';
+        renderHoursFields(store.operating_hours || {});
+    } else {
+        storeNameInput.value = '';
+        storeAddressInput.value = '';
+        renderHoursFields();
+    }
+
+    storeModal.show();
+}
+
+        
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function saveStore(event) {
+    if (event) event.preventDefault();
+    if (!storeModal) return;
+
+    const storeId = document.getElementById('storeModalId').value.trim();
+    const name = document.getElementById('storeName').value.trim();
+    const address = document.getElementById('storeAddress').value.trim();
+
+    if (!name) {
+        showToast('Store name is required', 'danger');
+        return;
+    }
+    if (!address) {
+        showToast('Store address is required', 'danger');
+        return;
+    }
+
+    let operatingHours;
+    try {
+        operatingHours = collectStoreHours();
+    } catch (error) {
+        showToast(error.message, 'danger');
+        return;
+    }
+
+    const payload = { name, address, operating_hours: operatingHours };
+    const button = saveStoreBtn;
+    if (button) {
+        button.disabled = true;
+        showLoading(button);
+    }
+
+    try {
+            method: storeId ? 'PATCH' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.detail || data.message || 'Failed to save store');
+        }
+        storeModal.hide();
+        await 
+        showToast(storeId ? 'Store updated' : 'Store created', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Unable to save store', 'danger');
+    } finally {
+        if (button) {
+            hideLoading(button);
+            button.disabled = false;
+        }
+    }
+}
+
+async function removeStore(storeId = '', event = null) {
+    if (!storeId) return;
+
+    const button = event?.currentTarget || null;
+    if (button) {
+        button.disabled = true;
+        showLoading(button);
+    }
+
+    try {
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.detail || payload.message || 'Failed to remove store');
+        }
+        await 
+        showToast('Store removed', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Unable to remove store', 'danger');
+    } finally {
+        if (button) {
+            hideLoading(button);
+            button.disabled = false;
+        }
+    }
+}
+
+// Load verification message on page load
+async function loadVerificationMessage() {
+    try {
+        const response = await fetch('/api/settings/verification-message');
+        const payload = await response.json();
+        if (payload.success && payload.data) {
+            const message = payload.data.message || '';
+            if (verificationMessageInput) {
+                verificationMessageInput.value = message;
+                updateVerificationMessagePreview();
+            }
+        }
+    } catch (error) {
+        console.error('Error loading verification message:', error);
+    }
+}
+
+function updateVerificationMessagePreview() {
+    if (!verificationMessageInput || !verificationMessagePreview) return;
+
+    const template = verificationMessageInput.value;
+    // Replace variables with sample values
+    const preview = template
+        .replace(/{customer_name}/g, 'Jane Doe')
+        .replace(/{order_id}/g, 'ORD123')
+        .replace(/{total_price}/g, '$8.00')
+        .replace(/{delivery_location}/g, 'SUTD')
+        .replace(/{delivery_time}/g, 'Tomorrow 3:00 PM')
+        
+
+    verificationMessagePreview.textContent = preview;
+}
+
+async function saveVerificationMessage() {
+    try {
+        const message = (verificationMessageInput.value || '').trim();
+        if (!message) {
+            showToast('Message cannot be empty', 'warning');
+            return;
+        }
+
+        const response = await fetch('/api/settings/verification-message', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        });
+
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.detail || 'Failed to save message');
+
+        showToast('✓ Verification message saved successfully', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast('Failed to save verification message: ' + error.message, 'danger');
+    }
+}
+
+if (addMenuGroupBtn) {
+    addMenuGroupBtn.addEventListener('click', addMenuGroup);
+}
+
+if (saveMenuGroupsBtn) {
+    saveMenuGroupsBtn.addEventListener('click', saveMenuGroups);
+}
+
+if (saveBrandingBtn) {
+    saveBrandingBtn.addEventListener('click', saveBranding);
+}
+
+if (savePricingBtn) {
+    savePricingBtn.addEventListener('click', savePricing);
+}
+
+if (addStoreBtn) {
+    addStoreBtn.addEventListener('click', () => openStoreModal());
+}
+
+if (saveStoreBtn) {
+    saveStoreBtn.addEventListener('click', saveStore);
+}
+
+if (brandingTitleInput) {
+    brandingTitleInput.addEventListener('input', renderBrandingPreview);
+}
+
+if (brandingSubtitleInput) {
+    brandingSubtitleInput.addEventListener('input', renderBrandingPreview);
+}
+
+if (brandingImageFileInput) {
+    brandingImageFileInput.addEventListener('change', handleBrandingImageFileChange);
+}
+
+if (clearBrandingImageBtn) {
+    clearBrandingImageBtn.addEventListener('click', () => {
+        currentBrandingImageUrl = '';
+        updateBrandingImagePreview();
+        showToast('Branding image cleared. Don\'t forget to save branding.', 'info');
+    });
+}
+
+if (currencyInput) {
+    currencyInput.addEventListener('input', () => {
+        const value = (currencyInput.value || '').trim().toUpperCase();
+        if (pricingCurrencyLabel) {
+            pricingCurrencyLabel.textContent = value || (pricing.currency || 'SGD');
+        }
+    });
+    currencyInput.value = (currencyInput.value || '').trim().toUpperCase();
+}
+
+if (pricingCurrencyLabel) {
+    pricingCurrencyLabel.textContent = (pricing.currency || pricingCurrencyLabel.textContent || 'SGD').toUpperCase();
+}
+
+if (verificationMessageInput) {
+    verificationMessageInput.addEventListener('input', updateVerificationMessagePreview);
+}
+
+if (saveVerificationMessageBtn) {
+    saveVerificationMessageBtn.addEventListener('click', saveVerificationMessage);
+}
+
+setBrandingUploadState(false);
+renderMenuGroups();
+renderBrandingPreview();
+updateBrandingImagePreview();
+
+loadVerificationMessage();
+
+// Expose menu functions to window for inline onclick handlers
+window.addMenuOption = addMenuOption;
+window.removeMenuOption = removeMenuOption;
+window.removeMenuGroup = removeMenuGroup;
+</script>
+{% endblock %}

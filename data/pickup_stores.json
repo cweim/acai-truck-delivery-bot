@@ -1,0 +1,47 @@
+[
+  {
+    "id": "clementi",
+    "name": "Clementi Store",
+    "address": "Clementi Mall #01-23, Singapore 129588",
+    "operating_hours": {
+      "monday": {"open": "10:00", "close": "22:00"},
+      "tuesday": {"open": "10:00", "close": "22:00"},
+      "wednesday": {"open": "10:00", "close": "22:00"},
+      "thursday": {"open": "10:00", "close": "22:00"},
+      "friday": {"open": "10:00", "close": "22:00"},
+      "saturday": {"open": "10:00", "close": "22:00"},
+      "sunday": {"open": "10:00", "close": "22:00"}
+    },
+    "status": "active"
+  },
+  {
+    "id": "utown",
+    "name": "UTown Store",
+    "address": "University Town, NUS, Singapore 119077",
+    "operating_hours": {
+      "monday": {"open": "09:00", "close": "21:00"},
+      "tuesday": {"open": "09:00", "close": "21:00"},
+      "wednesday": {"open": "09:00", "close": "21:00"},
+      "thursday": {"open": "09:00", "close": "21:00"},
+      "friday": {"open": "09:00", "close": "21:00"},
+      "saturday": {"open": "10:00", "close": "20:00"},
+      "sunday": {"open": "10:00", "close": "20:00"}
+    },
+    "status": "active"
+  },
+  {
+    "id": "kent_ridge",
+    "name": "Kent Ridge Store",
+    "address": "Kent Ridge MRT Station, Singapore 119241",
+    "operating_hours": {
+      "monday": {"open": "11:00", "close": "21:00"},
+      "tuesday": {"open": "11:00", "close": "21:00"},
+      "wednesday": {"open": "11:00", "close": "21:00"},
+      "thursday": {"open": "11:00", "close": "21:00"},
+      "friday": {"open": "11:00", "close": "21:00"},
+      "saturday": {"open": "11:00", "close": "20:00"},
+      "sunday": {"open": "closed", "close": "closed"}
+    },
+    "status": "active"
+  }
+]

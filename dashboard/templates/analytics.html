@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - The Açaí Truck Admin{% endblock %}
+
+{% block nav_analytics %}active{% endblock %}
+
+{% block page_title %}Analytics{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- Filters Card -->
+<div class="card mb-6">
+    <div class="card-body">
+        <div style="max-width: 300px;">
+            <!-- Location Selector -->
+            <label class="form-label">Delivery Location</label>
+            <select class="form-select" id="locationFilter" onchange="applyLocationFilter()">
+                <option value="">All Deliveries</option>
+                {% for location in all_locations %}
+                <option value="{{ location }}" {% if selected_location == location %}selected{% endif %}>
+                    {{ location }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Date Range Info -->
+<div style="margin-bottom: var(--space-4);">
+    <p class="page-subtitle"><span id="dateRangeText">{{ date_range }}</span> - Key business insights at a glance</p>
+</div>
+
+<!-- Sales Chart -->
+<div class="card mb-6">
+    <div class="card-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <h3 class="card-title">
+            <i class="bi bi-bar-chart"></i> Daily Sales Trend
+        </h3>
+        <div style="width: 180px;">
+            <label class="form-label small mb-2">View</label>
+            <select class="form-select form-select-sm" id="timeGroupingFilter" onchange="applyTimeGrouping()">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body" style="overflow-x: auto; position: relative;">
+        <div style="min-width: 100%; width: fit-content; padding-right: 20px;">
+            <canvas id="salesChart" height="80" style="max-width: 2000px;"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="grid-cols-2 mb-6">
+    <!-- Top Customers -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="bi bi-trophy"></i> Top Customers by Revenue
+            </h3>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Customer</th>
+                            <th>Orders</th>
+                            <th>Revenue</th>
+                            <th>Avg Order</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for customer in top_customers %}
+                        <tr>
+                            <td><span class="badge badge-success">{{ loop.index }}</span></td>
+                            <td>
+                                <div class="font-medium">{{ customer.customer_name }}</div>
+                                <div class="text-sm text-muted">{{ customer.customer_phone }}</div>
+                            </td>
+                            <td>{{ customer.order_count }}</td>
+                            <td class="font-semibold">${{ "%.2f"|format(customer.total_revenue) }}</td>
+                            <td>${{ "%.2f"|format(customer.avg_order_value) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">No customer data available</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Placeholder for spacing -->
+    <div></div>
+</div>
+
+<!-- Popular Items -->
+<div class="card mb-6">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="bi bi-star-fill"></i> Popular Flavor & Sauce Combos
+        </h3>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Flavor</th>
+                        <th>Sauce</th>
+                        <th>Orders</th>
+                        <th>Total Qty</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in popular_items[:10] %}
+                    <tr>
+                        <td><span class="badge badge-primary">{{ loop.index }}</span></td>
+                        <td class="font-medium">{{ item.flavor }}</td>
+                        <td>{{ item.sauce }}</td>
+                        <td>{{ item.order_count }}</td>
+                        <td>{{ item.total_quantity }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">No items data</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Top Delivery Sessions -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="bi bi-truck"></i> Top Delivery Sessions
+        </h3>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Location & Date</th>
+                        <th>Orders</th>
+                        <th>Revenue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session in top_delivery_sessions %}
+                    <tr>
+                        <td><span class="badge badge-info">{{ loop.index }}</span></td>
+                        <td>
+                            <div class="font-medium">{{ session.location }}</div>
+                            <div class="text-sm text-muted">{{ session.delivery_datetime[:10] }}</div>
+                        </td>
+                        <td>{{ session.order_count }}</td>
+                        <td class="font-semibold">${{ "%.2f"|format(session.total_revenue) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted">No delivery session data</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Prepare data for chart
+const dailySalesData = {{ daily_sales | tojson }};
+const weeklySalesData = {{ weekly_sales | tojson }};
+const monthlySalesData = {{ monthly_sales | tojson }};
+
+let chartInstance = null;
+
+function formatDate(dateStr) {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatWeekLabel(weekLabel) {
+    return weekLabel || '';
+}
+
+function formatMonthLabel(monthLabel) {
+    return monthLabel || '';
+}
+
+function applyLocationFilter() {
+    const location = document.getElementById('locationFilter').value;
+    const timeGrouping = document.getElementById('timeGroupingFilter').value;
+    const params = new URLSearchParams();
+    if (location) params.append('location', location);
+    if (timeGrouping) params.append('grouping', timeGrouping);
+
+    // Update URL without reloading page
+    const newUrl = '/analytics?' + params.toString();
+    window.history.replaceState({ path: newUrl }, '', newUrl);
+
+    // Note: Location filter requires page reload to fetch new data from backend
+    // We'll reload here since location affects Popular Items, Top Customers, and Daily Sales data
+    window.location.href = newUrl;
+}
+
+function applyTimeGrouping() {
+    const timeGrouping = document.getElementById('timeGroupingFilter').value;
+    // Only re-render the chart, don't reload the page
+    renderChart(timeGrouping);
+}
+
+function prepareChartData(grouping) {
+    let data, labelKeyField, labelFormatter;
+
+    if (grouping === 'daily') {
+        data = dailySalesData;
+        labelKeyField = 'sale_date';
+        labelFormatter = formatDate;
+    } else if (grouping === 'weekly') {
+        data = weeklySalesData;
+        labelKeyField = 'week_label';
+        labelFormatter = formatWeekLabel;
+    } else if (grouping === 'monthly') {
+        data = monthlySalesData;
+        labelKeyField = 'month_label';
+        labelFormatter = formatMonthLabel;
+    } else {
+        data = dailySalesData;
+        labelKeyField = 'sale_date';
+        labelFormatter = formatDate;
+    }
+
+    // Aggregate data
+    const aggregated = {};
+    data.forEach(item => {
+        const key = item[labelKeyField];
+        if (!aggregated[key]) {
+            aggregated[key] = { orders: 0, revenue: 0, items: 0, label: labelFormatter(key) };
+        }
+        aggregated[key].orders += item.total_orders;
+        aggregated[key].revenue += parseFloat(item.total_revenue);
+        aggregated[key].items += item.total_items;
+    });
+
+    // Sort keys appropriately
+    let sortedKeys;
+    if (grouping === 'daily') {
+        sortedKeys = Object.keys(aggregated).sort();
+    } else if (grouping === 'weekly') {
+        sortedKeys = Object.keys(aggregated).sort();
+    } else {
+        sortedKeys = Object.keys(aggregated).sort();
+    }
+
+    const orders = sortedKeys.map(k => aggregated[k].orders);
+    const revenue = sortedKeys.map(k => aggregated[k].revenue);
+    const labels = sortedKeys.map(k => aggregated[k].label);
+
+    return { orders, revenue, labels };
+}
+
+function renderChart(grouping = 'daily') {
+    const { orders, revenue, labels } = prepareChartData(grouping);
+
+    const ctx = document.getElementById('salesChart').getContext('2d');
+
+    // Destroy previous chart if it exists
+    if (chartInstance) {
+        chartInstance.destroy();
+    }
+
+    // Create new chart with brand colors
+    chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: labels,
+        datasets: [
+            {
+                label: 'Revenue ($)',
+                data: revenue,
+                borderColor: '#68217A',
+                backgroundColor: 'rgba(104, 33, 122, 0.1)',
+                yAxisID: 'y',
+                tension: 0.3,
+                borderWidth: 2,
+                pointBackgroundColor: '#68217A',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            },
+            {
+                label: 'Orders',
+                data: orders,
+                borderColor: '#D94370',
+                backgroundColor: 'rgba(217, 67, 112, 0.1)',
+                yAxisID: 'y1',
+                tension: 0.3,
+                borderWidth: 2,
+                pointBackgroundColor: '#D94370',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        interaction: {
+            mode: 'index',
+            intersect: false
+        },
+        plugins: {
+            legend: {
+                labels: {
+                    font: {
+                        family: 'Poppins, sans-serif',
+                        size: 13
+                    },
+                    padding: 15,
+                    usePointStyle: true
+                }
+            }
+        },
+        scales: {
+            y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: {
+                    display: true,
+                    text: 'Revenue ($)',
+                    font: {
+                        family: 'Poppins, sans-serif',
+                        size: 12,
+                        weight: '600'
+                    }
+                },
+                grid: {
+                    color: 'rgba(0, 0, 0, 0.05)'
+                },
+                ticks: {
+                    font: {
+                        family: 'Poppins, sans-serif',
+                        size: 11
+                    }
+                }
+            },
+            y1: {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: {
+                    display: true,
+                    text: 'Orders',
+                    font: {
+                        family: 'Poppins, sans-serif',
+                        size: 12,
+                        weight: '600'
+                    }
+                },
+                grid: {
+                    drawOnChartArea: false
+                },
+                ticks: {
+                    font: {
+                        family: 'Poppins, sans-serif',
+                        size: 11
+                    }
+                }
+            },
+            x: {
+                grid: {
+                    display: false
+                },
+                ticks: {
+                    font: {
+                        family: 'Poppins, sans-serif',
+                        size: 11
+                    }
+                }
+            }
+        }
+    }
+    });
+}
+
+// Initialize chart on page load
+document.addEventListener('DOMContentLoaded', () => {
+    const timeGroupingFilter = document.getElementById('timeGroupingFilter');
+    if (timeGroupingFilter) {
+        const initialGrouping = timeGroupingFilter.value || 'daily';
+        renderChart(initialGrouping);
+    } else {
+        renderChart('daily');
+    }
+});
+</script>
+{% endblock %}

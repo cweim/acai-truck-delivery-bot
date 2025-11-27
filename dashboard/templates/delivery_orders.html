@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+
+{% block title %}Delivery Orders - The Açaí Truck Admin{% endblock %}
+
+{% block nav_delivery %}active{% endblock %}
+
+{% block page_title %}Delivery Orders{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-4);">
+    <p class="page-subtitle">Review orders by session and verify customer payments</p>
+</div>
+
+<!-- Page Actions -->
+<div class="page-actions" style="margin-bottom: var(--space-8);">
+    <button class="btn-secondary" id="deliveryRefreshBtn">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+    <button class="btn-success" id="deliveryExportBtn" disabled>
+        <i class="bi bi-download"></i> Export CSV
+    </button>
+    <button class="btn-success" id="deliveryExportKitchenBtn" disabled>
+        <i class="bi bi-download"></i> Export Kitchen Prep
+    </button>
+</div>
+
+<!-- Session Selector Card -->
+<div class="card mb-6">
+    <div class="card-body">
+        {% if sessions %}
+        <div class="grid-cols-2 align-items-end">
+            <div>
+                <label class="form-label">Delivery Session</label>
+                <select class="form-select" id="deliverySessionSelect">
+                    {% for session in sessions %}
+                        {% set label = session.delivery_datetime or session.datetime %}
+                        <option value="{{ session.id }}"
+                            {% if selected_session and selected_session.id == session.id %}selected{% endif %}>
+                            {{ session.location }} — {{ label }}{% if session.status != 'open' %} (Closed){% endif %}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <div class="session-details-card" id="deliverySessionDetails">
+                    <div class="session-detail-item">
+                        <span class="session-detail-label">Location:</span>
+                        <span class="session-detail-value" id="deliverySessionLocation">-</span>
+                    </div>
+                    <div class="session-detail-item">
+                        <span class="session-detail-label">Delivery:</span>
+                        <span class="session-detail-value" id="deliverySessionTime">-</span>
+                    </div>
+                    <div class="session-detail-item">
+                        <span class="session-detail-label">Cutoff:</span>
+                        <span class="session-detail-value" id="deliverySessionCutoff">-</span>
+                    </div>
+                    <div class="session-detail-item">
+                        <span class="session-detail-label">Status:</span>
+                        <span class="session-detail-value" id="deliverySessionStatus">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> No delivery sessions available. Create a session before reviewing orders.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Orders Table Card -->
+<div class="card" id="deliveryOrdersCard">
+    <div class="card-header">
+        <h3 class="card-title">Orders</h3>
+        <span class="badge badge-secondary" id="deliveryOrderCount">0 orders</span>
+    </div>
+    <div class="card-body">
+        <div id="deliveryEmptyState" class="alert alert-info d-none">
+            <i class="bi bi-inboxes"></i> No orders found for this delivery session.
+        </div>
+        <div class="table-responsive">
+            <table class="data-table" id="deliveryOrdersTable">
+                <thead>
+                    <tr>
+                        <th>Order ID</th>
+                        <th>Date</th>
+                        <th>Customer</th>
+                        <th>Items</th>
+                        <th>Total</th>
+                        <th>Payment</th>
+                        <th>Verify</th>
+                    </tr>
+                </thead>
+                <tbody id="deliveryOrdersBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Receipt Preview Modal -->
+<div class="modal fade" id="receiptPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Payment Receipt</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="receiptPreviewBody">
+                <div class="text-center">
+                    <img id="receiptPreviewImg" src="" alt="Receipt" style="max-width: 100%; max-height: 400px; border-radius: 8px;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <a id="receiptFullLink" href="#" target="_blank" class="btn btn-primary">
+                    <i class="bi bi-arrow-up-right"></i> Open Full Size
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Receipt thumbnail in table */
+.receipt-thumbnail {
+    max-width: 120px;
+    max-height: 120px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    object-fit: cover;
+}
+
+.receipt-thumbnail:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Full preview image in modal */
+#receiptPreviewImg {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease;
+}
+
+#receiptPreviewImg:hover {
+    transform: scale(1.02);
+}
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const deliverySessions = {{ sessions|tojson }};
+let currentSessionId = {{ selected_session.id if selected_session else 'null' }};
+let currentSessionKey = {{ (selected_session.session_id|tojson) if selected_session else 'null' }};
+
+if (currentSessionId === null && deliverySessions.length) {
+    currentSessionId = deliverySessions[0].id;
+    currentSessionKey = deliverySessions[0].session_id;
+    if (deliverySessionSelect) {
+        deliverySessionSelect.value = String(currentSessionId);
+    }
+}
+
+const deliverySessionSelect = document.getElementById('deliverySessionSelect');
+const deliveryOrderCount = document.getElementById('deliveryOrderCount');
+const deliveryOrdersBody = document.getElementById('deliveryOrdersBody');
+const deliveryEmptyState = document.getElementById('deliveryEmptyState');
+const deliveryExportBtn = document.getElementById('deliveryExportBtn');
+const deliveryExportKitchenBtn = document.getElementById('deliveryExportKitchenBtn');
+const deliveryRefreshBtn = document.getElementById('deliveryRefreshBtn');
+
+if (currentSessionId === null) {
+    deliveryExportBtn.disabled = true;
+    deliveryExportKitchenBtn.disabled = true;
+} else {
+    // Enable buttons if session is selected
+    deliveryExportBtn?.removeAttribute('disabled');
+    deliveryExportKitchenBtn?.removeAttribute('disabled');
+
+    const initialSession = deliverySessions.find(session => session.id === currentSessionId);
+    if (initialSession) {
+        setSessionDetails(initialSession);
+    }
+}
+
+function formatDateTime(dateTimeStr) {
+    if (!dateTimeStr) return '-';
+    try {
+        // Parse the ISO string and ensure consistent formatting
+        const dt = new Date(dateTimeStr);
+
+        // Get UTC components to avoid timezone conversion issues
+        const year = dt.getUTCFullYear();
+        const month = dt.getUTCMonth() + 1;
+        const day = dt.getUTCDate();
+        const hours = dt.getUTCHours();
+        const minutes = dt.getUTCMinutes();
+
+        // Format: DD MMM YYYY, HH:MM AM/PM (in UTC)
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthStr = monthNames[month - 1];
+        const dayStr = String(day).padStart(2, '0');
+        const isPM = hours >= 12;
+        const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+        const displayHoursStr = String(displayHours).padStart(2, '0');
+        const minutesStr = String(minutes).padStart(2, '0');
+        const ampm = isPM ? 'PM' : 'AM';
+
+        return `${dayStr} ${monthStr} ${year}, ${displayHoursStr}:${minutesStr} ${ampm}`;
+    } catch (e) {
+        console.error('Error formatting date:', e, dateTimeStr);
+        return dateTimeStr;
+    }
+}
+
+function setSessionDetails(session) {
+    document.getElementById('deliverySessionLocation').textContent = session?.location || '-';
+    document.getElementById('deliverySessionTime').textContent = formatDateTime(session?.delivery_datetime || session?.datetime);
+    document.getElementById('deliverySessionCutoff').textContent = formatDateTime(session?.cutoff_time);
+    document.getElementById('deliverySessionStatus').textContent = session?.status ? session.status.toUpperCase() : '-';
+}
+
+function formatCurrency(value) {
+    if (value === null || value === undefined) return '$0.00';
+    return '$' + Number(value).toFixed(2);
+}
+
+function paymentBadge(status) {
+    switch (status) {
+        case 'verified': return '<span class="badge badge-success">Verified</span>';
+        case 'submitted': return '<span class="badge badge-warning">Submitted</span>';
+        case 'failed': return '<span class="badge badge-danger">Failed</span>';
+        default: return '<span class="badge badge-secondary">Pending</span>';
+    }
+}
+
+function showReceiptPreview(imageUrl) {
+    if (!imageUrl) {
+        showToast('No receipt available', 'warning');
+        return;
+    }
+    document.getElementById('receiptPreviewImg').src = imageUrl;
+    document.getElementById('receiptFullLink').href = imageUrl;
+    const modal = new bootstrap.Modal(document.getElementById('receiptPreviewModal'));
+    modal.show();
+}
+
+function renderDeliveryOrders(orders) {
+    deliveryOrdersBody.innerHTML = '';
+    if (!orders.length) {
+        deliveryEmptyState.classList.remove('d-none');
+        deliveryOrderCount.textContent = '0 orders';
+        return;
+    }
+    deliveryEmptyState.classList.add('d-none');
+    deliveryOrderCount.textContent = `${orders.length} order${orders.length === 1 ? '' : 's'}`;
+
+    orders.forEach(order => {
+        const verified = order.payment_status === 'verified';
+        const notificationError = order.telegram_notification_error;
+        const paymentReceipt = order.payment_screenshot_url
+            ? `<img src="${order.payment_screenshot_url}" alt="Receipt" class="receipt-thumbnail" onclick="showReceiptPreview('${order.payment_screenshot_url.replace(/'/g, "\\'")}');" style="cursor: pointer;">`
+            : '<span class="text-muted">-</span>';
+
+        // Show notification status indicator if there's an error
+        let notificationStatus = '';
+        if (verified && notificationError) {
+            notificationStatus = `<span class="badge badge-warning" title="${notificationError}"><i class="bi bi-exclamation-triangle"></i> Message failed</span>`;
+        } else if (verified && order.telegram_notification_sent) {
+            notificationStatus = `<span class="badge badge-success" title="Notification sent"><i class="bi bi-check-circle"></i> Notified</span>`;
+        }
+
+        // Format items display - handle both new items array and legacy single-item format
+        let itemsDisplay = '';
+        if (order.items && order.items.length > 0) {
+            // New format with items array
+            itemsDisplay = order.items.map(item => {
+                const flavor = item.flavor || '-';
+                const sauce = item.sauce ? ` + ${item.sauce}` : '';
+                const qty = item.quantity || 0;
+                return `<div>${qty}x ${flavor}${sauce}</div>`;
+            }).join('');
+        } else {
+            // Legacy single-item format
+            const flavor = order.flavor || '-';
+            const sauce = order.sauce ? ` + ${order.sauce}` : '';
+            const qty = order.quantity || 0;
+            itemsDisplay = `<div>${qty}x ${flavor}${sauce}</div>`;
+        }
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><code>${order.order_id}</code></td>
+            <td>${formatDateTime(order.created_at)}</td>
+            <td>
+                <div class="font-medium">${order.customer_name || 'Unknown'}</div>
+                <div class="text-sm text-muted">@${order.customer_handle || 'n/a'}</div>
+                <div class="text-sm text-muted">${order.customer_phone || '-'}</div>
+            </td>
+            <td>
+                ${itemsDisplay}
+            </td>
+            <td class="font-semibold">${formatCurrency(order.total_price)}</td>
+            <td>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem; align-items: center;">
+                    <div>${paymentBadge(order.payment_status)}</div>
+                    <div>${paymentReceipt}</div>
+                    ${notificationStatus ? `<div style="font-size: 0.85rem;">${notificationStatus}</div>` : ''}
+                </div>
+            </td>
+            <td>
+                <button class="btn-sm ${verified ? 'btn-secondary' : 'btn-success'}"
+                    onclick="toggleVerification('${order.order_id}', ${verified ? 'false' : 'true'})"
+                    title="${notificationError ? 'Notification failed: ' + notificationError : ''}">
+                    ${verified ? '<i class="bi bi-x-circle"></i> Unverify' : '<i class="bi bi-shield-check"></i> Verify'}
+                </button>
+            </td>
+        `;
+        deliveryOrdersBody.appendChild(row);
+    });
+}
+
+async function loadDeliveryOrders(sessionId) {
+    if (!sessionId) {
+        deliveryOrdersBody.innerHTML = '';
+        deliveryEmptyState.classList.remove('d-none');
+        deliveryOrderCount.textContent = '0 orders';
+        deliveryExportBtn.disabled = true;
+        document.getElementById('deliverySessionLocation').textContent = '-';
+        document.getElementById('deliverySessionTime').textContent = '-';
+        document.getElementById('deliverySessionCutoff').textContent = '-';
+        document.getElementById('deliverySessionStatus').textContent = '-';
+        return;
+    }
+    deliveryExportBtn.disabled = false;
+
+    try {
+        const response = await fetch(`/api/delivery-orders?session_id=${sessionId}`);
+        const payload = await response.json();
+        if (!payload.success) throw new Error('Failed to load orders');
+        renderDeliveryOrders(payload.data || []);
+        setSessionDetails(payload.session);
+        currentSessionKey = payload.session?.session_id || currentSessionKey;
+    } catch (error) {
+        console.error(error);
+        showToast('Failed to load delivery orders', 'danger');
+    }
+}
+
+async function toggleVerification(orderId, makeVerified) {
+    try {
+        // If unverifying, use the old endpoint
+        if (!makeVerified) {
+            const response = await fetch(`/api/delivery-orders/${orderId}/verify?verified=false`, {
+                method: 'POST'
+            });
+            const payload = await response.json();
+            if (!payload.success) throw new Error(payload.detail || 'Failed to update payment status');
+            showToast('Payment marked as pending', 'warning');
+            await loadDeliveryOrders(currentSessionId);
+            return;
+        }
+
+        // If verifying, use the new verify-and-notify endpoint
+        showToast('Verifying payment and sending notification...', 'info', 3000);
+        const response = await fetch(`/api/delivery-orders/${orderId}/verify-and-notify`, {
+            method: 'POST'
+        });
+        const payload = await response.json();
+
+        if (!payload.success) throw new Error(payload.detail || 'Failed to verify payment');
+
+        if (payload.notification_sent) {
+            showToast('✓ Payment verified and notification sent to customer!', 'success');
+        } else {
+            const errorMsg = payload.notification_error || 'Failed to send notification';
+            showToast(`✓ Payment verified | ⚠️ Notification not sent: ${errorMsg}`, 'warning');
+        }
+
+        await loadDeliveryOrders(currentSessionId);
+    } catch (error) {
+        console.error(error);
+        showToast('Unable to update payment status: ' + error.message, 'danger');
+    }
+}
+
+
+if (deliverySessionSelect) {
+    deliverySessionSelect.addEventListener('change', (event) => {
+        currentSessionId = Number(event.target.value);
+        const selected = deliverySessions.find(session => session.id === currentSessionId);
+        currentSessionKey = selected ? selected.session_id : null;
+
+        // Enable export buttons when a session is selected
+        if (currentSessionId) {
+            deliveryExportBtn?.removeAttribute('disabled');
+            deliveryExportKitchenBtn?.removeAttribute('disabled');
+        } else {
+            deliveryExportBtn?.setAttribute('disabled', 'disabled');
+            deliveryExportKitchenBtn?.setAttribute('disabled', 'disabled');
+        }
+
+        loadDeliveryOrders(currentSessionId);
+    });
+}
+
+deliveryRefreshBtn?.addEventListener('click', () => {
+    location.reload();
+});
+
+deliveryExportBtn?.addEventListener('click', () => {
+    if (!currentSessionId) return;
+    window.location.href = `/api/delivery-orders/export?session_id=${currentSessionId}`;
+});
+
+deliveryExportKitchenBtn?.addEventListener('click', () => {
+    if (!currentSessionId) return;
+    window.location.href = `/api/delivery-orders/export-kitchen?session_id=${currentSessionId}`;
+});
+
+if (currentSessionId) {
+    loadDeliveryOrders(currentSessionId);
+} else {
+    deliveryOrdersBody.innerHTML = '';
+    deliveryEmptyState?.classList.remove('d-none');
+    deliveryExportBtn?.setAttribute('disabled', 'disabled');
+    deliveryExportKitchenBtn?.setAttribute('disabled', 'disabled');
+}
+
+window.toggleVerification = toggleVerification;
+window.showReceiptPreview = showReceiptPreview;
+</script>
+{% endblock %}

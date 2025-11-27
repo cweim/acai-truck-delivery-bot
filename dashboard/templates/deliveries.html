@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+
+{% block title %}Delivery Sessions - The Açaí Truck Admin{% endblock %}
+
+{% block nav_deliveries %}active{% endblock %}
+
+{% block page_title %}Delivery Sessions{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-4);">
+    <p class="page-subtitle">Manage delivery sessions and create new deliveries</p>
+    <div class="alert alert-info" style="margin-top: var(--space-3); font-size: 0.875rem;">
+        <strong>Cut Off:</strong> Stop accepting new orders (Telegram won't show session) | <strong>Delete:</strong> Remove session and all order records from database
+    </div>
+</div>
+
+<!-- Page Actions -->
+<div class="page-actions" style="margin-bottom: var(--space-8);">
+    <button class="btn-primary" onclick="showCreateModal()">
+        <i class="bi bi-plus-circle"></i> Create New Delivery
+    </button>
+</div>
+
+{% if removed_count and removed_count > 0 %}
+<div class="alert alert-warning mb-6">
+    <i class="bi bi-exclamation-triangle"></i> Removed {{ removed_count }} delivery sessions older than 3 days to conserve storage.
+</div>
+{% endif %}
+
+<!-- Active Delivery Sessions -->
+<div class="card mb-6" style="border-left: 4px solid var(--success);">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="bi bi-check-circle"></i> Active Delivery Sessions
+        </h3>
+    </div>
+    <div class="card-body">
+        <div id="activeSessionsContainer">
+            <!-- Populated by JavaScript based on delivery datetime -->
+        </div>
+    </div>
+</div>
+
+<!-- Past Delivery Sessions -->
+<div class="card" style="border-left: 4px solid var(--text-muted);">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="bi bi-clock-history"></i> Past Delivery Sessions
+        </h3>
+    </div>
+    <div class="card-body">
+        <div id="pastSessionsContainer">
+            <!-- Populated by JavaScript -->
+        </div>
+    </div>
+</div>
+
+<!-- Create Delivery Modal -->
+<div class="modal fade" id="createDeliveryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Delivery Session</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createDeliveryForm">
+                    <div class="mb-3">
+                        <label class="form-label">Delivery Location</label>
+                        <input type="text" class="form-control" id="location" required>
+                        <small class="text-muted">Where will the delivery take place (e.g., "PGP House 26")</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Delivery Date & Time</label>
+                        <input type="datetime-local" class="form-control" id="deliveryDatetime" required>
+                        <small class="text-muted">When the delivery will arrive</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Order Cutoff Time</label>
+                        <input type="datetime-local" class="form-control" id="cutoffTime" required>
+                        <small class="text-muted">Last time to accept orders</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn-primary" onclick="submitCreateDelivery()">
+                    <i class="bi bi-plus-circle"></i> Create Delivery
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let createModal;
+
+function showCreateModal() {
+    createModal = new bootstrap.Modal(document.getElementById('createDeliveryModal'));
+    createModal.show();
+}
+
+async function submitCreateDelivery() {
+    const locationValue = document.getElementById('location').value;
+    const deliveryDatetime = document.getElementById('deliveryDatetime').value;
+    const cutoffTime = document.getElementById('cutoffTime').value;
+
+    if (!locationValue || !deliveryDatetime || !cutoffTime) {
+        alert('Please fill in all fields');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/delivery-sessions', {
+            method: 'POST',
+            headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            location: locationValue,
+            delivery_datetime: deliveryDatetime,
+            cutoff_time: cutoffTime
+        })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Delivery session created successfully!');
+            createModal.hide();
+            window.location.reload();
+        } else {
+            alert('Failed to create delivery session: ' + (data.detail || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function cutoffSession(sessionKey) {
+    if (!confirm('Cut off orders for this delivery now?\n\nCustomers will no longer see this session in Telegram, but existing records remain.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/delivery-sessions/${encodeURIComponent(sessionKey)}/status`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: 'closed' })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Delivery session cut off successfully!');
+            window.location.reload();
+        } else {
+            alert('Failed to cut off delivery session');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function deleteSession(sessionId) {
+    if (!confirm('Export the orders before closing this delivery.\n\nOnce closed, all orders and payment screenshots for this session will be permanently deleted.\n\nWould you like to continue?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/delivery-sessions/${sessionId}/orders`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Delivery session removed successfully!');
+            window.location.reload();
+        } else {
+            alert('Failed to remove delivery session');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Format currency
+function formatCurrency(value) {
+    if (value === null || value === undefined) return '$0.00';
+    return '$' + Number(value).toFixed(2);
+}
+
+// Format all date times on page load
+function formatDateTime(dateTimeStr) {
+    if (!dateTimeStr) return '-';
+    try {
+        // Parse the ISO string and ensure consistent formatting
+        const dt = new Date(dateTimeStr);
+
+        // Get UTC components to avoid timezone conversion issues
+        const year = dt.getUTCFullYear();
+        const month = dt.getUTCMonth() + 1;
+        const day = dt.getUTCDate();
+        const hours = dt.getUTCHours();
+        const minutes = dt.getUTCMinutes();
+
+        // Format: DD MMM YYYY, HH:MM AM/PM (in UTC)
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthStr = monthNames[month - 1];
+        const dayStr = String(day).padStart(2, '0');
+        const isPM = hours >= 12;
+        const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+        const displayHoursStr = String(displayHours).padStart(2, '0');
+        const minutesStr = String(minutes).padStart(2, '0');
+        const ampm = isPM ? 'PM' : 'AM';
+
+        return `${dayStr} ${monthStr} ${year}, ${displayHoursStr}:${minutesStr} ${ampm}`;
+    } catch (e) {
+        console.error('Error formatting date:', e, dateTimeStr);
+        return dateTimeStr;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Populate active and past sessions
+    populateActiveSessions();
+    populatePastSessions();
+});
+
+function populateActiveSessions() {
+    const sessions = {{ sessions|tojson }};
+    const now = new Date();
+    const activeSessions = sessions.filter(session => {
+        if (!session.delivery_datetime) return false;
+        try {
+            const deliveryTime = new Date(session.delivery_datetime);
+            return deliveryTime >= now;  // Future deliveries = active
+        } catch {
+            return false;
+        }
+    });
+
+    const container = document.getElementById('activeSessionsContainer');
+
+    if (activeSessions.length === 0) {
+        container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle"></i> No active delivery sessions. Create one to start accepting orders!</div>';
+        return;
+    }
+
+    let html = `
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Session #</th>
+                        <th>Session Key</th>
+                        <th>Location</th>
+                        <th>Delivery Time</th>
+                        <th>Cutoff Time</th>
+                        <th>Revenue</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    activeSessions.forEach(session => {
+        const statusBadge = session.status === 'open'
+            ? '<span class="badge badge-success">Open</span>'
+            : '<span class="badge badge-secondary">Closed</span>';
+
+        html += `
+            <tr>
+                <td><code>${session.id}</code></td>
+                <td><small>${session.session_id}</small></td>
+                <td class="font-medium">${session.location}</td>
+                <td>${formatDateTime(session.delivery_datetime)}</td>
+                <td>${formatDateTime(session.cutoff_time)}</td>
+                <td class="font-semibold" style="color: var(--success);">${formatCurrency(session.revenue || 0)}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div style="display: flex; gap: var(--space-2);">
+                        ${session.status === 'open' ? `<button class="btn-sm btn-warning" onclick="cutoffSession('${session.session_id}')"><i class="bi bi-slash-circle"></i> Cut Off</button>` : ''}
+                        <button class="btn-sm btn-danger" onclick="deleteSession('${session.id}')"><i class="bi bi-trash"></i> Delete</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+function populatePastSessions() {
+    const sessions = {{ sessions|tojson }};
+    const now = new Date();
+    const pastSessions = sessions.filter(session => {
+        if (!session.delivery_datetime) return false;
+        try {
+            const deliveryTime = new Date(session.delivery_datetime);
+            return deliveryTime < now;
+        } catch {
+            return false;
+        }
+    });
+
+    const container = document.getElementById('pastSessionsContainer');
+
+    if (pastSessions.length === 0) {
+        container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle"></i> No past delivery sessions.</div>';
+        return;
+    }
+
+    let html = `
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Session #</th>
+                        <th>Location</th>
+                        <th>Delivery Time</th>
+                        <th>Revenue</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    pastSessions.forEach(session => {
+        html += `
+            <tr>
+                <td><code>${session.id}</code></td>
+                <td class="font-medium">${session.location}</td>
+                <td>${formatDateTime(session.delivery_datetime)}</td>
+                <td class="font-semibold" style="color: var(--success);">${formatCurrency(session.revenue || 0)}</td>
+                <td>
+                    <span class="badge badge-secondary">${(session.status || 'unknown').toUpperCase()}</span>
+                </td>
+                <td>
+                    <button class="btn-sm btn-danger" onclick="deleteSession('${session.id}')">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+</script>
+{% endblock %}

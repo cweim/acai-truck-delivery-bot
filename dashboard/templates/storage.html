@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+
+{% block title %}Storage Management - The Açaí Truck Admin{% endblock %}
+
+{% block nav_storage %}active{% endblock %}
+
+{% block page_title %}Storage Management{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-4);">
+    <p class="page-subtitle">Monitor database and file storage usage. Delete orders to free up space.</p>
+</div>
+
+<!-- Storage Overview Cards -->
+<div class="grid-cols-2" style="margin-bottom: var(--space-8);">
+    <!-- Database Storage Card -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="bi bi-database"></i> Database Storage
+            </h3>
+            <span class="badge badge-info">500 MB Limit</span>
+        </div>
+        <div class="card-body">
+            <div style="margin-bottom: var(--space-4);">
+                <div class="storage-stat">
+                    <div class="storage-label">Usage</div>
+                    <div class="storage-value" id="dbUsedMB">-</div>
+                    <div class="storage-sublabel">of <span id="dbLimitMB">500</span> MB</div>
+                </div>
+                <div class="progress" style="height: 8px; margin-top: var(--space-2);">
+                    <div class="progress-bar" id="dbProgressBar" role="progressbar" style="width: 0%;"></div>
+                </div>
+            </div>
+            <div class="storage-details">
+                <div class="storage-detail-item">
+                    <span class="storage-detail-label">Total Orders:</span>
+                    <span class="storage-detail-value" id="dbTotalOrders">-</span>
+                </div>
+                <div class="storage-detail-item">
+                    <span class="storage-detail-label">Remaining:</span>
+                    <span class="storage-detail-value" id="dbRemaining">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Storage Card -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="bi bi-file-image"></i> File Storage (Receipts)
+            </h3>
+            <span class="badge badge-info">1 GB Limit</span>
+        </div>
+        <div class="card-body">
+            <div style="margin-bottom: var(--space-4);">
+                <div class="storage-stat">
+                    <div class="storage-label">Usage</div>
+                    <div class="storage-value" id="storageUsedMB">-</div>
+                    <div class="storage-sublabel">of <span id="storageLimitGB">1</span> GB</div>
+                </div>
+                <div class="progress" style="height: 8px; margin-top: var(--space-2);">
+                    <div class="progress-bar" id="storageProgressBar" role="progressbar" style="width: 0%;"></div>
+                </div>
+            </div>
+            <div class="storage-details">
+                <div class="storage-detail-item">
+                    <span class="storage-detail-label">Total Receipts:</span>
+                    <span class="storage-detail-value" id="storageTotalReceipts">-</span>
+                </div>
+                <div class="storage-detail-item">
+                    <span class="storage-detail-label">Remaining:</span>
+                    <span class="storage-detail-value" id="storageRemaining">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delivery Sessions Storage Breakdown -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Delivery Sessions Storage Breakdown</h3>
+        <div style="display: flex; gap: var(--space-2);">
+            <button class="btn-secondary" id="storageRefreshBtn" onclick="loadStorageData()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <input type="text" id="storageSearchInput" class="form-control" placeholder="Search location..." style="max-width: 250px;">
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="storageEmptyState" class="alert alert-info d-none">
+            <i class="bi bi-inbox"></i> No delivery sessions found.
+        </div>
+        <div class="table-responsive">
+            <table class="data-table" id="storageTable">
+                <thead>
+                    <tr>
+                        <th style="width: 150px;">Location</th>
+                        <th style="width: 150px;">Delivery Time</th>
+                        <th style="width: 80px;">Status</th>
+                        <th style="width: 100px;">Orders</th>
+                        <th style="width: 100px;">Receipts</th>
+                        <th style="width: 100px;">DB Size</th>
+                        <th style="width: 100px;">Receipt Size</th>
+                        <th style="width: 100px;">Total</th>
+                        <th style="width: 100px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="storageTableBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+.storage-stat {
+    text-align: center;
+    margin-bottom: var(--space-3);
+}
+
+.storage-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.storage-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.storage-sublabel {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+.storage-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.storage-detail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.storage-detail-item:last-child {
+    border-bottom: none;
+}
+
+.storage-detail-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.storage-detail-value {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.progress-bar {
+    background: linear-gradient(to right, #10b981, #3b82f6);
+    transition: width 0.3s ease;
+}
+
+.progress-bar.high-usage {
+    background: linear-gradient(to right, #ef4444, #f97316);
+}
+
+.receipt-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-size: 0.875rem;
+}
+
+.receipt-link:hover {
+    text-decoration: underline;
+}
+</style>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function formatDateTime(dateTimeStr) {
+    if (!dateTimeStr) return '-';
+    try {
+        const dt = new Date(dateTimeStr);
+        return dt.toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });
+    } catch (e) {
+        return dateTimeStr;
+    }
+}
+
+async function loadStorageData() {
+    try {
+        // Load storage stats
+        const statsResponse = await fetch('/api/storage/stats');
+        const statsPayload = await statsResponse.json();
+
+        if (!statsPayload.success) throw new Error('Failed to load storage stats');
+
+        const stats = statsPayload.data;
+        updateStorageCards(stats);
+
+        // Load delivery sessions
+        const sessionsResponse = await fetch('/api/storage/delivery-sessions');
+        const sessionsPayload = await sessionsResponse.json();
+
+        if (!sessionsPayload.success) throw new Error('Failed to load delivery sessions');
+
+        renderStorageTable(sessionsPayload.data || []);
+    } catch (error) {
+        console.error(error);
+        showToast('Failed to load storage data', 'danger');
+    }
+}
+
+function updateStorageCards(stats) {
+    // Database stats
+    const dbStats = stats.database || {};
+    document.getElementById('dbUsedMB').textContent = dbStats.used_mb?.toFixed(2) + ' MB';
+    document.getElementById('dbLimitMB').textContent = Math.round(dbStats.limit_mb);
+    document.getElementById('dbTotalOrders').textContent = dbStats.total_orders || 0;
+    document.getElementById('dbRemaining').textContent = dbStats.remaining_mb?.toFixed(2) + ' MB';
+
+    const dbPercent = dbStats.percent_used || 0;
+    const dbBar = document.getElementById('dbProgressBar');
+    dbBar.style.width = dbPercent + '%';
+    if (dbPercent > 80) dbBar.classList.add('high-usage');
+
+    // File storage stats
+    const fsStats = stats.file_storage || {};
+    document.getElementById('storageUsedMB').textContent = fsStats.used_mb?.toFixed(2) + ' MB';
+    document.getElementById('storageLimitGB').textContent = Math.round(fsStats.limit_gb);
+    document.getElementById('storageTotalReceipts').textContent = fsStats.total_receipts || 0;
+    document.getElementById('storageRemaining').textContent = fsStats.remaining_mb?.toFixed(2) + ' MB';
+
+    const fsPercent = fsStats.percent_used || 0;
+    const fsBar = document.getElementById('storageProgressBar');
+    fsBar.style.width = fsPercent + '%';
+    if (fsPercent > 80) fsBar.classList.add('high-usage');
+}
+
+function renderStorageTable(sessions) {
+    const tbody = document.getElementById('storageTableBody');
+    const emptyState = document.getElementById('storageEmptyState');
+
+    if (!sessions.length) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('d-none');
+        return;
+    }
+
+    emptyState.classList.add('d-none');
+    tbody.innerHTML = sessions.map(session => `
+        <tr>
+            <td><strong>${session.location || '-'}</strong></td>
+            <td>${formatDateTime(session.delivery_datetime)}</td>
+            <td>
+                <span class="badge ${session.status === 'open' ? 'badge-success' : 'badge-secondary'}">
+                    ${session.status?.toUpperCase() || 'UNKNOWN'}
+                </span>
+            </td>
+            <td><strong>${session.total_orders || 0}</strong></td>
+            <td>${session.orders_with_receipts || 0}</td>
+            <td>
+                <span class="text-sm">${(session.orders_db_size_bytes / 1024).toFixed(2)} KB</span>
+            </td>
+            <td>
+                <span class="text-sm">${(session.receipts_size_bytes / 1024 / 1024).toFixed(2)} MB</span>
+            </td>
+            <td>
+                <strong>${session.total_size_mb?.toFixed(2) || 0} MB</strong>
+            </td>
+            <td>
+                <button class="btn-sm btn-danger" onclick="deleteSession(${session.delivery_datetime ? '${session.session_id}' : 'null'})">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function deleteSession(sessionId) {
+    if (!sessionId) {
+        showToast('Invalid session', 'danger');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete all orders in this delivery session? This will also delete all payment receipts.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/storage/delivery-sessions/${sessionId}`, {
+            method: 'DELETE'
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.detail || 'Failed to delete session');
+        showToast('Delivery session deleted successfully', 'success');
+        await loadStorageData();
+    } catch (error) {
+        console.error(error);
+        showToast('Failed to delete session', 'danger');
+    }
+}
+
+// Search functionality
+document.getElementById('storageSearchInput')?.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('#storageTable tbody tr');
+
+    rows.forEach(row => {
+        const location = row.querySelector('strong')?.textContent.toLowerCase() || '';
+        row.style.display = location.includes(searchTerm) ? '' : 'none';
+    });
+});
+
+// Load data on page load
+document.addEventListener('DOMContentLoaded', loadStorageData);
+</script>
+{% endblock %}

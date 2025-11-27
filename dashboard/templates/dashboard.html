@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Acai Supper Bot Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-house-door"></i> Dashboard</h1>
+        <p class="text-muted">Welcome back, {{ admin.full_name or admin.username }}!</p>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-cart-check"></i> Today's Orders
+                </h6>
+                <h2 class="mb-0">{{ stats.today_orders }}</h2>
+                <small>{{ stats.today_delivery }} delivery orders</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-currency-dollar"></i> Today's Revenue
+                </h6>
+                <h2 class="mb-0">${{ stats.today_revenue }}</h2>
+                <small>SGD</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-clock-history"></i> Pending Payments
+                </h6>
+                <h2 class="mb-0">{{ stats.pending_payments }}</h2>
+                <small>Awaiting verification</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-graph-up"></i> Quick Actions
+                </h6>
+                <div class="d-grid gap-2">
+                    <a href="/delivery-orders" class="btn btn-light btn-sm">View Orders</a>
+                    <a href="/settings" class="btn btn-light btn-sm">Settings</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Links -->
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="bi bi-truck"></i> Delivery Orders</h5>
+            </div>
+            <div class="card-body">
+                <p>Manage delivery orders, verify payments, and update order status.</p>
+                <a href="/delivery-orders" class="btn btn-primary">
+                    View Delivery Orders <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> Bot Settings</h5>
+            </div>
+            <div class="card-body">
+                <p>Configure menu items, pricing, and bot settings.</p>
+                <a href="/settings" class="btn btn-primary">
+                    Manage Settings <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Analytics</h5>
+            </div>
+            <div class="card-body">
+                <p>View sales trends, popular items, and store performance metrics.</p>
+                <a href="/analytics" class="btn btn-primary">
+                    View Analytics <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

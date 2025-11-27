@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}The Açaí Truck Admin{% endblock %}</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+
+    <!-- Legacy Bootstrap CSS (for backward compatibility during transition) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Design System CSS (loaded after Bootstrap to override default styles) -->
+    <link rel="stylesheet" href="/static/css/design-system.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <i class="bi bi-cup-straw"></i>
+            <span class="sidebar-brand">The Açaí Truck</span>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="/" class="sidebar-nav-item {% block nav_analytics %}{% endblock %}">
+                <i class="bi bi-graph-up"></i>
+                <span>Analytics</span>
+            </a>
+            <a href="/delivery-orders" class="sidebar-nav-item {% block nav_delivery %}{% endblock %}">
+                <i class="bi bi-truck"></i>
+                <span>Delivery Orders</span>
+            </a>
+            <a href="/deliveries" class="sidebar-nav-item {% block nav_deliveries %}{% endblock %}">
+                <i class="bi bi-calendar-event"></i>
+                <span>Deliveries</span>
+            </a>
+            <a href="/storage" class="sidebar-nav-item {% block nav_storage %}{% endblock %}">
+                <i class="bi bi-pie-chart"></i>
+                <span>Storage</span>
+            </a>
+            <a href="/settings" class="sidebar-nav-item {% block nav_settings %}{% endblock %}">
+                <i class="bi bi-gear"></i>
+                <span>Settings</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <i class="bi bi-person-circle"></i>
+                <div class="sidebar-user-info">
+                    <div class="sidebar-user-name">{{ admin.full_name or admin.username }}</div>
+                    <div class="sidebar-user-role">Admin</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Toggle menu">
+        <i class="bi bi-list"></i>
+    </button>
+
+    <!-- Main Content Wrapper -->
+    <div class="main-wrapper">
+        <!-- Top Bar -->
+        <header class="topbar">
+            <div class="topbar-content">
+                <h1 class="topbar-title">{% block page_title %}Dashboard{% endblock %}</h1>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <span>The Açaí Truck Admin Dashboard &copy; 2025</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
+    <!-- Custom JS -->
+    <script src="/static/js/main.js"></script>
+
+    <!-- Mobile Menu Toggle Script -->
+    <script>
+        const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+        const sidebar = document.getElementById('sidebar');
+
+        if (mobileMenuToggle && sidebar) {
+            mobileMenuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('sidebar-open');
+                document.body.classList.toggle('sidebar-open');
+            });
+
+            // Close sidebar when clicking outside on mobile
+            document.addEventListener('click', (e) => {
+                if (window.innerWidth <= 768) {
+                    if (!sidebar.contains(e.target) && !mobileMenuToggle.contains(e.target)) {
+                        sidebar.classList.remove('sidebar-open');
+                        document.body.classList.remove('sidebar-open');
+                    }
+                }
+            });
+        }
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
