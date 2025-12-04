@@ -44,9 +44,10 @@ wheels/
 temp_screenshots/
 service_account.json
 
-# Database (reference docs, not code - already in Supabase)
-database/
-!database/__init__.py
+# Database (exclude SQL files and migrations, but keep Python code)
+database/*.sql
+database/migrations/
+database/__pycache__/
 
 # OS
 .DS_Store
