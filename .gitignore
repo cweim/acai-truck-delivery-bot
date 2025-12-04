@@ -51,3 +51,6 @@ database/
 # OS
 .DS_Store
 Thumbs.db
+
+# Deployment guide (local reference only)
+DEPLOYMENT.md
