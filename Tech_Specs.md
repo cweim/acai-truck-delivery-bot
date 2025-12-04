@@ -598,25 +598,83 @@ uvicorn dashboard.app:app --reload
 
 | Platform | Cost | Pros | Cons |
 |----------|------|------|------|
-| **Railway** | $5-10/mo | Simple, pay-as-you-go | Less control |
+| **Railway** ⭐ | $0-10/mo | $5 free credits, auto-deploy, simple | Less control |
 | **Render** | $7+/mo | Good free tier | Limited resources |
 | **DigitalOcean** | $4-6/mo | Full VPS control | More setup |
 | **Linode** | $5+/mo | Reliable, supports Docker | Complex |
 | **Cloud Run** | ~$0-5/mo | Serverless, scalable | Cold starts |
 
+**⭐ Railway Deployment (Recommended)**
+
+Railway offers the best balance of simplicity and cost for small-medium traffic:
+- **$5/month free credits** (covers ~2,000 orders/month)
+- **Pay-as-you-go** after free tier
+- **Auto-deploy** from GitHub on push
+- **Two separate services**: Dashboard (web) + Bot (background)
+
+**Current Production Setup:**
+```
+GitHub Repository (cweim/acai-truck-delivery-bot)
+    ↓ (auto-deploy on push)
+Railway Project
+├── acai-dashboard (Service 1)
+│   ├── Command: uvicorn dashboard.app:app --host 0.0.0.0 --port $PORT
+│   ├── Public Domain: https://acai-truck-delivery-bot-production.up.railway.app
+│   └── Port: 8080 (auto-assigned by Railway)
+│
+└── acai-bot (Service 2)
+    ├── Command: python bot.py
+    ├── No public domain (background service)
+    └── Connects to Telegram via polling
+    ↓
+Supabase (Cloud Database + Storage)
+```
+
+**Railway Deployment Steps:**
+
+1. **Push to GitHub:**
+   ```bash
+   git push origin main
+   ```
+
+2. **Create Railway Project:**
+   - Visit https://railway.app
+   - Login with GitHub
+   - New Project → Deploy from GitHub repo
+   - Select `cweim/acai-truck-delivery-bot`
+
+3. **Configure Dashboard Service (Service 1):**
+   - Settings → Custom Start Command: `uvicorn dashboard.app:app --host 0.0.0.0 --port $PORT`
+   - Variables → Add all 5 environment variables (BOT_TOKEN, ADMIN_ID, SUPABASE_URL, SUPABASE_KEY, SUPABASE_BUCKET)
+   - Networking → Generate Domain → Set target port to 8080
+
+4. **Create Bot Service (Service 2):**
+   - Click "+ New" → GitHub Repo → Same repository
+   - Settings → Custom Start Command: `python bot.py`
+   - Variables → Add same 5 environment variables
+   - No domain needed (background service)
+
+5. **Verify Deployment:**
+   - Check dashboard logs: Should show "Application startup complete"
+   - Check bot logs: Should show "Bot started successfully"
+   - Visit dashboard URL: Should see login page
+   - Send /start to Telegram bot: Should receive welcome message
+
+**Important Notes:**
+- Both services auto-redeploy when you push to GitHub
+- Environment variables are NOT in the repository (use Railway dashboard)
+- Database folder must be committed (contains `supabase_client.py`)
+- `.gitignore` excludes only SQL files and migrations
+
 **Supabase Costs:**
 - Free tier: 500 MB database, 1 GB storage, 500K API calls/month
 - Pro tier: $25/month + overage charges
-- Estimated for small bot: $0-15/month (Supabase) + $5-10/mo (server)
+- Estimated for small bot: $0-15/month (Supabase) + $0-10/mo (Railway)
 
-**Typical Stack:**
-```
-Telegram API
-    ↓
-Polling Bot (Railway/Render/VPS) + Dashboard (FastAPI)
-    ↓
-Supabase PostgreSQL + Storage (Cloud)
-```
+**Total Monthly Cost Estimate:**
+- **Small scale (500-2,000 orders/month):** $0-3/month (covered by Railway free credits)
+- **Medium scale (5,000-10,000 orders/month):** $10-15/month
+- **Large scale (10,000+ orders/month):** $25-40/month
 
 ### 9.3 Containerization (Docker)
 
