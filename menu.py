@@ -15,16 +15,10 @@ CACHE_TTL = 300
 
 
 def get_menu_data(force_refresh: bool = False) -> Dict[str, object]:
-    """Fetch menu groups and pricing from Supabase with fallback."""
-    global _MENU_CACHE
+    """Fetch menu groups and pricing from Supabase with fallback.
 
-    # Check if cache is valid (exists and not expired)
-    if _MENU_CACHE and not force_refresh:
-        data, timestamp = _MENU_CACHE
-        if time.time() - timestamp < CACHE_TTL:
-            return data
-        else:
-            logger.info("Menu cache expired, refreshing from database")
+    Caching is skipped so Telegram always sees the latest pricing/menu immediately.
+    """
 
     try:
         db = get_db()
@@ -75,7 +69,6 @@ def get_menu_data(force_refresh: bool = False) -> Dict[str, object]:
         "groups": sanitized_groups,
         "pricing": pricing,
     }
-    _MENU_CACHE = (menu_data, time.time())
     return menu_data
 
 

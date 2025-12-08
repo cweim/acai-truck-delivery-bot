@@ -92,12 +92,36 @@
                         <th>Total</th>
                         <th>Payment</th>
                         <th>Verify</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="deliveryOrdersBody">
                 </tbody>
             </table>
         </div>
+    </div>
+</div>
+
+<!-- Broadcast Message Card -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title mb-0"><i class="bi bi-megaphone"></i> Broadcast to Session Customers</h3>
+        <p class="text-muted mb-0 small">Send a message (optional image) to all Telegram users in this delivery session.</p>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Message</label>
+            <textarea class="form-control" id="broadcastMessage" rows="3" placeholder="Enter the message to send"></textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Image (optional)</label>
+            <input type="file" class="form-control" id="broadcastImageFile" accept="image/png, image/jpeg, image/webp">
+            <small class="text-muted">PNG/JPG/WebP up to 2MB.</small>
+        </div>
+        <button class="btn-success" id="broadcastSendBtn" onclick="sendBroadcast()">
+            <i class="bi bi-send"></i> Send Broadcast
+        </button>
+        <div id="broadcastStatus" class="mt-2 text-muted small"></div>
     </div>
 </div>
 
@@ -174,6 +198,10 @@ const deliveryEmptyState = document.getElementById('deliveryEmptyState');
 const deliveryExportBtn = document.getElementById('deliveryExportBtn');
 const deliveryExportKitchenBtn = document.getElementById('deliveryExportKitchenBtn');
 const deliveryRefreshBtn = document.getElementById('deliveryRefreshBtn');
+const broadcastImageFileInput = document.getElementById('broadcastImageFile');
+const broadcastMessageInput = document.getElementById('broadcastMessage');
+const broadcastSendBtn = document.getElementById('broadcastSendBtn');
+const broadcastStatus = document.getElementById('broadcastStatus');
 
 if (currentSessionId === null) {
     deliveryExportBtn.disabled = true;
@@ -321,6 +349,11 @@ function renderDeliveryOrders(orders) {
                     ${verified ? '<i class="bi bi-x-circle"></i> Unverify' : '<i class="bi bi-shield-check"></i> Verify'}
                 </button>
             </td>
+            <td>
+                <button class="btn-sm btn-outline-danger" onclick="deleteDeliveryOrder('${order.order_id}')">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            </td>
         `;
         deliveryOrdersBody.appendChild(row);
     });
@@ -390,6 +423,90 @@ async function toggleVerification(orderId, makeVerified) {
     }
 }
 
+async function sendBroadcast() {
+    if (!currentSessionId) {
+        showToast('Select a delivery session first', 'warning');
+        return;
+    }
+    const message = (broadcastMessageInput.value || '').trim();
+    const imageFile = broadcastImageFileInput?.files?.[0];
+
+    if (imageFile && !imageFile.type.startsWith('image/')) {
+        showToast('Please choose an image file (PNG/JPG/WebP)', 'danger');
+        return;
+    }
+    if (imageFile && imageFile.size > 2 * 1024 * 1024) {
+        showToast('Image must be 2MB or smaller', 'danger');
+        return;
+    }
+    if (!message) {
+        showToast('Message cannot be empty', 'danger');
+        return;
+    }
+
+    if (broadcastSendBtn) {
+        broadcastSendBtn.disabled = true;
+        showLoading(broadcastSendBtn);
+    }
+    broadcastStatus.textContent = 'Sending...';
+
+    try {
+        const formData = new FormData();
+        formData.append('message', message);
+        if (imageFile) {
+            formData.append('image', imageFile);
+        }
+
+        const response = await fetch(`/api/delivery-orders/broadcast?session_id=${currentSessionId}`, {
+            method: 'POST',
+            body: formData
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.detail || payload.message || 'Failed to send broadcast');
+        }
+        const failed = payload.failed || [];
+        const sent = payload.sent || 0;
+        broadcastStatus.textContent = `Sent to ${sent} recipient(s)` + (failed.length ? `, ${failed.length} failed` : '');
+        if (failed.length) {
+            console.warn('Broadcast failures', failed);
+            showToast(`Sent to ${sent}, ${failed.length} failed`, 'warning');
+        } else {
+            showToast(`Sent to ${sent} recipient(s)`, 'success');
+        }
+    } catch (error) {
+        console.error(error);
+        broadcastStatus.textContent = 'Send failed';
+        showToast('Unable to send broadcast: ' + error.message, 'danger');
+    } finally {
+        if (broadcastSendBtn) {
+            hideLoading(broadcastSendBtn);
+            broadcastSendBtn.disabled = false;
+        }
+    }
+}
+
+async function deleteDeliveryOrder(orderId) {
+    if (!orderId) return;
+    const confirmed = confirm(`Delete order ${orderId}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`/api/delivery-orders/${orderId}`, {
+            method: 'DELETE'
+        });
+        const payload = await response.json();
+        if (!payload.success) {
+            throw new Error(payload.detail || 'Failed to delete order');
+        }
+        showToast(`Order ${orderId} deleted`, 'success');
+        await loadDeliveryOrders(currentSessionId);
+    } catch (error) {
+        console.error(error);
+        showToast('Unable to delete order: ' + error.message, 'danger');
+    }
+}
+
 
 if (deliverySessionSelect) {
     deliverySessionSelect.addEventListener('change', (event) => {
@@ -435,5 +552,7 @@ if (currentSessionId) {
 
 window.toggleVerification = toggleVerification;
 window.showReceiptPreview = showReceiptPreview;
+window.deleteDeliveryOrder = deleteDeliveryOrder;
+window.sendBroadcast = sendBroadcast;
 </script>
 {% endblock %}

@@ -142,11 +142,11 @@
     </div>
 </div>
 
-<!-- Top Delivery Sessions -->
+<!-- Top Delivery Locations -->
 <div class="card">
     <div class="card-header">
         <h3 class="card-title">
-            <i class="bi bi-truck"></i> Top Delivery Sessions
+            <i class="bi bi-truck"></i> Top Delivery Locations
         </h3>
     </div>
     <div class="card-body">
@@ -155,7 +155,8 @@
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Location & Date</th>
+                        <th>Location</th>
+                        <th>Sessions</th>
                         <th>Orders</th>
                         <th>Revenue</th>
                     </tr>
@@ -166,14 +167,14 @@
                         <td><span class="badge badge-info">{{ loop.index }}</span></td>
                         <td>
                             <div class="font-medium">{{ session.location }}</div>
-                            <div class="text-sm text-muted">{{ session.delivery_datetime[:10] }}</div>
                         </td>
+                        <td>{{ session.session_count }}</td>
                         <td>{{ session.order_count }}</td>
                         <td class="font-semibold">${{ "%.2f"|format(session.total_revenue) }}</td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="4" class="text-center text-muted">No delivery session data</td>
+                        <td colspan="5" class="text-center text-muted">No delivery location data</td>
                     </tr>
                     {% endfor %}
                 </tbody>

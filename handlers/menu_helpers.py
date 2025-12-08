@@ -7,7 +7,8 @@ from menu import get_menu_data
 
 def cache_menu_data(context: ContextTypes.DEFAULT_TYPE) -> Dict[str, Any]:
     """Load menu data and cache it in the user context."""
-    menu = get_menu_data()
+    # Force refresh so pricing/menu changes reflect immediately in bot sessions
+    menu = get_menu_data(force_refresh=True)
     context.user_data['menu_groups'] = menu.get('groups', [])
     context.user_data['menu_pricing'] = menu.get('pricing', {})
     return menu

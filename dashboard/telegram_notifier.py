@@ -49,6 +49,39 @@ async def send_order_verification_message(
         print(f"❌ {error_msg}")
         return False, error_msg
 
+async def send_broadcast_message(
+    telegram_user_id: int,
+    message: str,
+    image_url: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
+    """
+    Send a broadcast message (with optional image) to a user.
+    """
+    try:
+        bot = Bot(token=BOT_TOKEN)
+        if image_url:
+            await bot.send_photo(
+                chat_id=telegram_user_id,
+                photo=image_url,
+                caption=message,
+                parse_mode='HTML'
+            )
+        else:
+            await bot.send_message(
+                chat_id=telegram_user_id,
+                text=message,
+                parse_mode='HTML'
+            )
+        return True, None
+    except TelegramError as e:
+        error_msg = f"Telegram error: {str(e)}"
+        print(f"❌ {error_msg}")
+        return False, error_msg
+    except Exception as e:
+        error_msg = f"Error sending message: {str(e)}"
+        print(f"❌ {error_msg}")
+        return False, error_msg
+
 
 def format_verification_message(
     template: str,

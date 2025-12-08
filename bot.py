@@ -79,7 +79,8 @@ def _get_active_deliveries():
 
 async def _send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send menu details sourced from Supabase settings."""
-    menu = get_menu_data()
+    # Force refresh so latest pricing/menu is shown immediately
+    menu = get_menu_data(force_refresh=True)
     groups = menu.get("groups", [])
     pricing = menu.get("pricing", {})
 

@@ -26,7 +26,7 @@ sys.path.insert(0, current_dir)
 
 from database.supabase_client import get_db, SupabaseDB
 from menu import invalidate_menu_cache, invalidate_branding_cache
-from telegram_notifier import send_order_verification_message, format_verification_message
+from telegram_notifier import send_order_verification_message, format_verification_message, send_broadcast_message
 
 # Helper function to normalize location names for deduplication
 def normalize_location(location: str) -> str:
@@ -179,6 +179,9 @@ class BrandingUpdate(BaseModel):
     subtitle: str
     image_url: Optional[str] = None
 
+class VerificationMessageUpdate(BaseModel):
+    message: str
+
 
 def slugify(value: str, prefix: str) -> str:
     base = re.sub(r'[^a-z0-9]+', '-', value.lower()).strip('-')
@@ -295,7 +298,8 @@ async def dashboard_home(request: Request, admin: Dict = Depends(verify_admin_cr
 
     # NEW ANALYTICS
     top_customers = db.get_top_customers(start_date, end_date, limit=10)
-    top_delivery_sessions = db.get_top_delivery_sessions(start_date, end_date, limit=10)
+    # Global leaderboard (ignore location/date filter for completeness)
+    top_delivery_sessions = db.get_top_delivery_sessions(limit=10)
     peak_hours = db.get_peak_hours_analysis(start_date, end_date)
     payment_stats = db.get_payment_method_stats(start_date, end_date)
     customer_acquisition = db.get_customer_acquisition_stats(start_date, end_date)
@@ -363,13 +367,22 @@ async def settings_page(request: Request, admin: Dict = Depends(verify_admin_cre
     menu_groups = db.get_menu_groups()
     pricing = db.get_pricing()
     branding = db.get_bot_branding()
+    verification_setting = db.get_setting('order_verification_message')
+    default_verification = "Hi {customer_name}, your order #{order_id} has been confirmed! Total: {total_price}. Thank you!"
+    if isinstance(verification_setting, dict):
+        verification_message = verification_setting.get('message', default_verification)
+    elif isinstance(verification_setting, str):
+        verification_message = verification_setting or default_verification
+    else:
+        verification_message = default_verification
 
     context = {
         "request": request,
         "admin": admin,
         "menu_groups": menu_groups,
         "pricing": pricing,
-        "branding": branding
+        "branding": branding,
+        "verification_message": verification_message
     }
 
     return templates.TemplateResponse("settings.html", context)
@@ -433,7 +446,8 @@ async def analytics_page(request: Request, admin: Dict = Depends(verify_admin_cr
     monthly_sales = db.get_monthly_sales_summary(start_date, end_date)
 
     store_performance = db.get_store_performance()
-    top_delivery_sessions = db.get_top_delivery_sessions(start_date, end_date, limit=10)
+    # Leaderboard is global (not filtered by location) and not limited by date range
+    top_delivery_sessions = db.get_top_delivery_sessions(limit=10)
     peak_hours = db.get_peak_hours_analysis(start_date, end_date)
     payment_stats = db.get_payment_method_stats(start_date, end_date)
     customer_acquisition = db.get_customer_acquisition_stats(start_date, end_date)
@@ -508,6 +522,132 @@ async def storage_management_page(request: Request, admin: Dict = Depends(verify
     return templates.TemplateResponse("storage.html", context)
 
 # ==================== API ENDPOINTS ====================
+
+# --- Settings API ---
+
+@app.get("/api/settings/verification-message")
+async def get_verification_message_setting(admin: Dict = Depends(verify_admin_credentials)):
+    """Return the current verification message template"""
+    db = get_db()
+    default_message = "Hi {customer_name}, your order #{order_id} has been confirmed! Total: {total_price}. Thank you!"
+    setting = db.get_setting('order_verification_message')
+
+    if isinstance(setting, dict):
+        message = setting.get('message') or default_message
+    elif isinstance(setting, str):
+        message = setting or default_message
+    else:
+        message = default_message
+
+    return {"success": True, "data": {"message": message}}
+
+
+@app.put("/api/settings/verification-message")
+async def update_verification_message_setting(
+    update: VerificationMessageUpdate,
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Update the verification message used when confirming payments"""
+    message = (update.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    db = get_db()
+    db.update_setting('order_verification_message', {"message": message})
+    return {"success": True, "message": "Verification message updated", "data": {"message": message}}
+
+
+@app.put("/api/settings/menu-groups")
+async def update_menu_groups_setting(
+    update: MenuGroupsUpdate,
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Persist menu option groups"""
+    db = get_db()
+    used_ids = set()
+    sanitized_groups = []
+
+    for index, group in enumerate(update.groups):
+        title = group.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail=f"Group {index + 1} title is required")
+
+        options = [opt.strip() for opt in group.options if opt.strip()]
+        if not options:
+            raise HTTPException(status_code=400, detail=f"{title} must include at least one option")
+
+        group_id = group.id or slugify(title, f"group-{index + 1}")
+        group_id = unique_slug(group_id, used_ids, f"group-{index + 1}")
+
+        sanitized_groups.append({
+            "id": group_id,
+            "title": title,
+            "options": options
+        })
+
+    db.save_menu_groups(sanitized_groups)
+    invalidate_menu_cache()
+    return {"success": True, "message": "Menu groups updated", "data": sanitized_groups}
+
+
+@app.put("/api/settings/pricing")
+async def update_pricing_setting(
+    update: SettingUpdate,
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Update menu pricing"""
+    pricing_value = update.value or {}
+    price_per_bowl = float(pricing_value.get("price_per_bowl", 0))
+    currency = str(pricing_value.get("currency", "")).upper()
+
+    if not currency or len(currency) != 3:
+        raise HTTPException(status_code=400, detail="Currency must be a 3-letter code")
+
+    db = get_db()
+    db.update_setting('pricing', {"price_per_bowl": price_per_bowl, "currency": currency})
+    invalidate_menu_cache()
+    return {"success": True, "message": "Pricing updated", "data": {"price_per_bowl": price_per_bowl, "currency": currency}}
+
+
+@app.put("/api/settings/branding")
+async def update_branding_setting(
+    update: BrandingUpdate,
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Update bot branding used for the welcome message"""
+    db = get_db()
+    branding_payload = {
+        "title": update.title.strip(),
+        "subtitle": update.subtitle.strip(),
+        "image_url": (update.image_url or "").strip()
+    }
+    db.update_bot_branding(branding_payload)
+    invalidate_branding_cache()
+    return {"success": True, "message": "Branding updated", "data": branding_payload}
+
+
+@app.post("/api/settings/branding/image")
+async def upload_branding_image(
+    file: UploadFile = File(...),
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Upload branding hero image to Supabase storage"""
+    extension = os.path.splitext(file.filename or "")[1].lower()
+    if extension not in BRANDING_IMAGE_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Use PNG, JPG, JPEG, GIF, or WebP.")
+
+    contents = await file.read()
+    if len(contents) > BRANDING_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be 2MB or smaller")
+
+    object_name = f"branding/{uuid.uuid4().hex}{extension}"
+    db = get_db()
+    url = db.upload_branding_image(object_name, contents, file.content_type)
+    if not url:
+        raise HTTPException(status_code=500, detail="Failed to upload branding image")
+
+    return {"success": True, "url": url}
+
 
 # --- Delivery Orders API ---
 
@@ -665,6 +805,121 @@ async def verify_and_notify_delivery_order(
             "notification_sent": False,
             "notification_error": error
         }
+
+
+@app.delete("/api/delivery-orders/{order_id}")
+async def delete_delivery_order(
+    order_id: str,
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Delete a delivery order and its payment receipt"""
+    db = get_db()
+    success = db.delete_delivery_order(order_id)
+    if success:
+        return {"success": True, "message": f"Order {order_id} deleted"}
+    raise HTTPException(status_code=400, detail="Failed to delete delivery order")
+
+
+@app.post("/api/delivery-orders/broadcast")
+async def broadcast_delivery_message(
+    session_id: int,
+    message: str = Form(...),
+    image: UploadFile = File(None),
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Send a message (optionally with an image) to all customers in a delivery session"""
+    if not message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    db = get_db()
+    users = db.get_delivery_session_users(session_id)
+    if not users:
+        raise HTTPException(status_code=404, detail="No customers found for this session")
+
+    # If an image file was provided, upload it and use that URL
+    image_url_final = ""
+    if image:
+        extension = os.path.splitext(image.filename or "")[1].lower()
+        if extension not in BRANDING_IMAGE_ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="Unsupported file type. Use PNG, JPG, JPEG, GIF, or WebP.")
+        contents = await image.read()
+        if len(contents) > BRANDING_IMAGE_MAX_BYTES:
+            raise HTTPException(status_code=400, detail="Image must be 2MB or smaller")
+
+        object_name = f"broadcast/{uuid.uuid4().hex}{extension}"
+        uploaded_url = db.upload_branding_image(object_name, contents, image.content_type)
+        if not uploaded_url:
+            raise HTTPException(status_code=500, detail="Failed to upload image")
+        image_url_final = uploaded_url
+
+    results = []
+    for user in users:
+        telegram_id = user.get('telegram_user_id')
+        if not telegram_id:
+            results.append({"telegram_user_id": None, "success": False, "error": "Missing telegram user id"})
+            continue
+        success, error = await send_broadcast_message(telegram_id, message, image_url_final or None)
+        results.append({"telegram_user_id": telegram_id, "success": success, "error": error})
+
+    sent = sum(1 for r in results if r["success"])
+    failed = [r for r in results if not r["success"]]
+
+    return {
+        "success": True,
+        "sent": sent,
+        "failed": failed,
+        "total": len(results)
+    }
+
+
+@app.post("/api/customers/broadcast")
+async def broadcast_customers_message(
+    message: str = Form(...),
+    image: UploadFile = File(None),
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Send a message (optional image) to all customers with Telegram IDs"""
+    if not message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    db = get_db()
+    users = db.get_all_telegram_users()
+    if not users:
+        raise HTTPException(status_code=404, detail="No customers with Telegram IDs found")
+
+    image_url_final = ""
+    if image:
+        extension = os.path.splitext(image.filename or "")[1].lower()
+        if extension not in BRANDING_IMAGE_ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="Unsupported file type. Use PNG, JPG, JPEG, GIF, or WebP.")
+        contents = await image.read()
+        if len(contents) > BRANDING_IMAGE_MAX_BYTES:
+            raise HTTPException(status_code=400, detail="Image must be 2MB or smaller")
+
+        object_name = f"broadcast/{uuid.uuid4().hex}{extension}"
+        uploaded_url = db.upload_branding_image(object_name, contents, image.content_type)
+        if not uploaded_url:
+            raise HTTPException(status_code=500, detail="Failed to upload image")
+        image_url_final = uploaded_url
+
+    results = []
+    for user in users:
+        telegram_id = user.get('telegram_user_id')
+        if not telegram_id:
+            results.append({"telegram_user_id": None, "success": False, "error": "Missing telegram user id"})
+            continue
+        success, error = await send_broadcast_message(telegram_id, message, image_url_final or None)
+        results.append({"telegram_user_id": telegram_id, "success": success, "error": error})
+
+    sent = sum(1 for r in results if r["success"])
+    failed = [r for r in results if not r["success"]]
+
+    return {
+        "success": True,
+        "sent": sent,
+        "failed": failed,
+        "total": len(results)
+    }
 
 # --- Analytics API ---
 

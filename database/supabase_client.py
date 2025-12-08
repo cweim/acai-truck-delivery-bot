@@ -59,6 +59,15 @@ class SupabaseDB:
             print(f"❌ Error getting user: {e}")
             return None
 
+    def get_all_telegram_users(self) -> List[Dict]:
+        """Get all users who have a Telegram ID"""
+        try:
+            response = self.client.table('users').select('telegram_user_id, name, telegram_handle').not_.is_('telegram_user_id', None).execute()
+            return response.data or []
+        except Exception as e:
+            print(f"❌ Error getting telegram users: {e}")
+            return []
+
     # ==================== SETTINGS ====================
 
     def get_setting(self, key: str) -> Any:
@@ -369,7 +378,7 @@ class SupabaseDB:
         """Get delivery order with user/telegram info for sending notifications"""
         try:
             response = self.client.table('delivery_orders').select(
-                '*, users(telegram_user_id)'
+                '*, users(telegram_user_id, name, telegram_handle)'
             ).eq('order_id', order_id).execute()
 
             if response.data and len(response.data) > 0:
@@ -378,6 +387,36 @@ class SupabaseDB:
         except Exception as e:
             print(f"❌ Error getting delivery order with user: {e}")
             return None
+
+    def get_delivery_session_users(self, session_id: int) -> List[Dict]:
+        """Get unique Telegram users for a delivery session with basic profile info"""
+        try:
+            response = self.client.table('delivery_orders').select(
+                'user_id, customer_name, customer_handle, users(telegram_user_id, name, telegram_handle)'
+            ).eq('delivery_session_id', session_id).execute()
+
+            users = []
+            seen = set()
+            for row in response.data or []:
+                telegram_id = None
+                if row.get('users') and row['users'].get('telegram_user_id'):
+                    telegram_id = row['users']['telegram_user_id']
+                elif row.get('user_id'):
+                    telegram_id = row['user_id']
+
+                if not telegram_id or telegram_id in seen:
+                    continue
+
+                seen.add(telegram_id)
+                users.append({
+                    "telegram_user_id": telegram_id,
+                    "name": (row.get('customer_name') or row.get('users', {}).get('name') or '').strip(),
+                    "handle": (row.get('customer_handle') or row.get('users', {}).get('telegram_handle') or '').strip()
+                })
+            return users
+        except Exception as e:
+            print(f"❌ Error getting session users for session {session_id}: {e}")
+            return []
 
     def update_delivery_order_notification(self, order_id: str, sent: bool, error: Optional[str] = None) -> bool:
         """Update notification status for delivery order"""
@@ -394,6 +433,25 @@ class SupabaseDB:
             return True
         except Exception as e:
             print(f"❌ Error updating delivery order notification: {e}")
+            return False
+
+    def delete_delivery_order(self, order_id: str) -> bool:
+        """Delete a single delivery order and its payment receipt if present"""
+        try:
+            # Fetch receipt URL before deleting order
+            response = self.client.table('delivery_orders').select(
+                'payment_screenshot_url'
+            ).eq('order_id', order_id).execute()
+            if response.data:
+                receipt_url = response.data[0].get('payment_screenshot_url')
+                if receipt_url:
+                    self.delete_payment_receipt(receipt_url)
+
+            # Delete the order record
+            self.client.table('delivery_orders').delete().eq('order_id', order_id).execute()
+            return True
+        except Exception as e:
+            print(f"❌ Error deleting delivery order {order_id}: {e}")
             return False
 
     def delete_delivery_orders_by_session(self, session_id: int) -> bool:
@@ -832,8 +890,41 @@ class SupabaseDB:
     def get_popular_items(self, limit: int = 10) -> List[Dict]:
         """Get popular items"""
         try:
-            response = self.client.table('popular_items').select('*').limit(limit).execute()
-            return response.data
+            # Prefer dynamic calculation from orders to handle multi-item carts
+            orders_resp = self.client.table('delivery_orders').select(
+                'items, flavor, sauce, quantity, order_status'
+            ).neq('order_status', 'cancelled').limit(5000).execute()
+            orders = orders_resp.data or []
+
+            items_dict: Dict[str, Dict[str, Any]] = {}
+
+            def add_entry(flavor_val, sauce_val, qty, count_as=1):
+                flavor = flavor_val or 'Unknown'
+                sauce = sauce_val or ''
+                key = f"{flavor}|{sauce}"
+                if key not in items_dict:
+                    items_dict[key] = {
+                        'flavor': flavor,
+                        'sauce': sauce,
+                        'order_count': 0,
+                        'total_quantity': 0
+                    }
+                items_dict[key]['order_count'] += count_as
+                items_dict[key]['total_quantity'] += max(0, int(qty))
+
+            for order in orders:
+                items = order.get('items') or []
+                if items:
+                    for item in items:
+                        qty = int(item.get('quantity', 0) or 0)
+                        add_entry(item.get('flavor'), item.get('sauce'), qty, 1)
+                else:
+                    # Fallback to legacy single-item fields
+                    add_entry(order.get('flavor'), order.get('sauce'), int(order.get('quantity', 0) or 0), 1)
+
+            items = list(items_dict.values())
+            items.sort(key=lambda x: (x['total_quantity'], x['order_count']), reverse=True)
+            return items[:limit]
         except Exception as e:
             print(f"❌ Error getting popular items: {e}")
             return []
@@ -887,38 +978,63 @@ class SupabaseDB:
             traceback.print_exc()
             return []
 
-    def get_top_delivery_sessions(self, start_date: date, end_date: date, limit: int = 10) -> List[Dict]:
-        """Get top delivery sessions by order count and revenue"""
+    def get_top_delivery_sessions(self, start_date: Optional[date] = None, end_date: Optional[date] = None, limit: int = 10, location: Optional[str] = None) -> List[Dict]:
+        """Get top delivery locations (aggregated across sessions) by revenue and orders"""
         try:
-            sessions = self.client.table('delivery_sessions').select(
-                'id, session_id, location, delivery_datetime, status'
-            ).gte('delivery_datetime', start_date.isoformat()).lte('delivery_datetime', end_date.isoformat()).execute()
+            session_query = self.client.table('delivery_sessions').select(
+                'id, location, delivery_datetime'
+            )
+            if start_date:
+                session_query = session_query.gte('delivery_datetime', start_date.isoformat())
+            if end_date:
+                session_query = session_query.lte('delivery_datetime', end_date.isoformat())
+            if location:
+                session_query = session_query.eq('location', location)
+            sessions_resp = session_query.execute()
+            sessions = sessions_resp.data or []
+            if not sessions:
+                return []
 
-            session_stats = []
-            for session in sessions.data:
-                orders = self.client.table('delivery_orders').select(
-                    'total_price, quantity'
-                ).eq('delivery_session_id', session['id']).neq('order_status', 'cancelled').execute()
+            session_ids = [s['id'] for s in sessions if s.get('id') is not None]
+            if not session_ids:
+                return []
 
-                order_count = len(orders.data)
-                total_revenue = sum(float(o.get('total_price', 0)) for o in orders.data)
-                total_items = sum(int(o.get('quantity', 0)) for o in orders.data)
-                avg_order_value = total_revenue / order_count if order_count > 0 else 0
+            orders_resp = self.client.table('delivery_orders').select(
+                'delivery_session_id, total_price, quantity, order_status'
+            ).in_('delivery_session_id', session_ids).execute()
+            orders = [o for o in (orders_resp.data or []) if o.get('order_status') != 'cancelled']
 
-                session_stats.append({
-                    'session_id': session.get('session_id'),
-                    'location': session.get('location'),
-                    'delivery_datetime': session.get('delivery_datetime'),
-                    'status': session.get('status'),
-                    'order_count': order_count,
-                    'total_revenue': total_revenue,
-                    'total_items': total_items,
-                    'avg_order_value': avg_order_value
+            totals: Dict[str, Dict[str, Any]] = {}
+            for session in sessions:
+                loc = session.get('location') or 'Unknown'
+                entry = totals.setdefault(loc, {
+                    'location': loc,
+                    'session_count': 0,
+                    'order_count': 0,
+                    'total_revenue': 0.0,
+                    'total_items': 0
                 })
+                entry['session_count'] += 1
 
-            # Sort by total revenue desc
-            session_stats.sort(key=lambda x: x['total_revenue'], reverse=True)
-            return session_stats[:limit]
+            orders_by_session: Dict[Any, list] = {}
+            for order in orders:
+                sid = order.get('delivery_session_id')
+                orders_by_session.setdefault(sid, []).append(order)
+
+            for session in sessions:
+                loc = session.get('location') or 'Unknown'
+                sid = session.get('id')
+                for order in orders_by_session.get(sid, []):
+                    totals[loc]['order_count'] += 1
+                    totals[loc]['total_revenue'] += float(order.get('total_price', 0))
+                    totals[loc]['total_items'] += int(order.get('quantity', 0))
+
+            result = list(totals.values())
+            result.sort(key=lambda x: x['total_revenue'], reverse=True)
+            for entry in result:
+                oc = entry['order_count']
+                entry['avg_order_value'] = entry['total_revenue'] / oc if oc > 0 else 0
+            return result[:limit]
         except Exception as e:
             print(f"❌ Error getting top delivery sessions: {e}")
             import traceback
@@ -1140,24 +1256,31 @@ class SupabaseDB:
             # Get orders for these sessions
             for session_id in session_ids:
                 orders = self.client.table('delivery_orders').select(
-                    'flavor, sauce, quantity, order_status'
+                    'items, flavor, sauce, quantity, order_status'
                 ).eq('delivery_session_id', session_id).neq('order_status', 'cancelled').execute()
 
                 for order in orders.data or []:
-                    flavor = order.get('flavor', 'Unknown')
-                    sauce = order.get('sauce', '')
-                    key = f"{flavor}|{sauce}"
+                    def add_entry(flavor_val, sauce_val, qty, count_as=1):
+                        flavor = flavor_val or 'Unknown'
+                        sauce = sauce_val or ''
+                        key = f"{flavor}|{sauce}"
+                        if key not in items_dict:
+                            items_dict[key] = {
+                                'flavor': flavor,
+                                'sauce': sauce,
+                                'order_count': 0,
+                                'total_quantity': 0
+                            }
+                        items_dict[key]['order_count'] += count_as
+                        items_dict[key]['total_quantity'] += max(0, int(qty))
 
-                    if key not in items_dict:
-                        items_dict[key] = {
-                            'flavor': flavor,
-                            'sauce': sauce,
-                            'order_count': 0,
-                            'total_quantity': 0
-                        }
-
-                    items_dict[key]['order_count'] += 1
-                    items_dict[key]['total_quantity'] += int(order.get('quantity', 0))
+                    items = order.get('items') or []
+                    if items:
+                        for item in items:
+                            qty = int(item.get('quantity', 0) or 0)
+                            add_entry(item.get('flavor'), item.get('sauce'), qty, 1)
+                    else:
+                        add_entry(order.get('flavor'), order.get('sauce'), int(order.get('quantity', 0) or 0), 1)
 
             items = list(items_dict.values())
             items.sort(key=lambda x: x['total_quantity'], reverse=True)

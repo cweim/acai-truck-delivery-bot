@@ -12,8 +12,90 @@
     <p class="page-subtitle">Adjust menu options, branding, and pricing</p>
 </div>
 
-<div class="grid-cols-2 mb-6">
-    
+<div class="card mb-6">
+    <div class="card-header">
+        <h3 class="card-title mb-0"><i class="bi bi-stars"></i> Bot Branding & Welcome</h3>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Welcome Title</label>
+            <input type="text" class="form-control" id="brandingTitle" value="{{ branding.title }}" placeholder="🍧 Welcome to Acai Supper Bot!">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Subtitle</label>
+            <textarea class="form-control" id="brandingSubtitle" rows="3" placeholder="Short description shown in the Telegram welcome message">{{ branding.subtitle }}</textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Hero Image</label>
+            <input class="form-control" type="file" id="brandingImageFile" accept="image/png, image/jpeg, image/webp">
+            <div id="brandingImageUploadStatus" class="form-text">PNG/JPG/WebP up to 2MB. Uploading will automatically update the preview and save the image.</div>
+            <div class="d-flex align-items-center gap-3 mt-3">
+                <div class="flex-shrink-0" style="width: 120px;">
+                    <img id="brandingPreviewImage" class="img-fluid rounded shadow-sm" alt="Branding preview" src="{{ branding.image_url or '' }}" {% if not branding.image_url %}style="display:none;"{% endif %}>
+                    <div id="brandingPreviewImagePlaceholder" class="border rounded d-flex align-items-center justify-content-center text-muted py-4 px-3" {% if branding.image_url %}style="display:none;"{% endif %}>
+                        No image uploaded
+                    </div>
+                </div>
+                <button class="btn btn-outline-secondary btn-sm" type="button" id="clearBrandingImageBtn">
+                    <i class="bi bi-eraser"></i> Remove Image
+                </button>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label small text-muted">Preview</label>
+            <div class="border rounded p-3 bg-light">
+                <h5 id="brandingPreviewTitle" class="mb-1">{{ branding.title or '🍧 Welcome to Acai Supper Bot!' }}</h5>
+                <p id="brandingPreviewSubtitle" class="mb-0 text-muted">{{ branding.subtitle }}</p>
+            </div>
+        </div>
+        <button class="btn-success" id="saveBrandingBtn">
+            <i class="bi bi-save"></i> Save Branding
+        </button>
+    </div>
+</div>
+
+<div class="card mb-6">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <h3 class="card-title mb-0"><i class="bi bi-cash-stack"></i> Pricing</h3>
+            <p class="mb-0 text-muted small">Set the base bowl price and currency shown to users</p>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Price per bowl (<span id="pricingCurrencyLabel">{{ pricing.currency or 'SGD' }}</span>)</label>
+            <input type="number" class="form-control" id="pricePerBowl" step="0.01" value="{{ pricing.price_per_bowl }}">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Currency</label>
+            <input type="text" class="form-control text-uppercase" id="currency" maxlength="3" value="{{ pricing.currency or 'SGD' }}" placeholder="SGD">
+            <small class="text-muted">Use a 3-letter currency code (e.g., SGD, USD).</small>
+        </div>
+        <button class="btn-success" id="savePricingBtn">
+            <i class="bi bi-save"></i> Save Pricing
+        </button>
+    </div>
+</div>
+
+<!-- Menu Groups -->
+<div class="card mb-6">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <h3 class="card-title mb-0"><i class="bi bi-list-check"></i> Menu Option Groups</h3>
+            <p class="mb-0 text-muted small">Configure flavors, sauces, and other add-ons shown in the bot</p>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-outline-primary" type="button" id="addMenuGroupBtn">
+                <i class="bi bi-plus"></i> Add Group
+            </button>
+            <button class="btn-success" type="button" id="saveMenuGroupsBtn">
+                <i class="bi bi-save"></i> Save Menu
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="menuGroupsContainer" class="row g-3"></div>
+    </div>
 </div>
 
 <!-- Order Verification Message -->
@@ -33,27 +115,50 @@
         </div>
         <div class="mb-3">
             <label class="form-label">Verification Message Template</label>
-            <textarea class="form-control" id="verificationMessage" rows="4" placeholder="Hi {customer_name}, your order #{order_id} has been confirmed! Total: {total_price}. Thank you!"></textarea>
+            <textarea class="form-control" id="verificationMessage" rows="4" placeholder="Hi {customer_name}, your order #{order_id} has been confirmed! Total: {total_price}. Thank you!">{{ verification_message }}</textarea>
             <small class="text-muted">This message will be sent in Telegram when the admin verifies an order payment.</small>
         </div>
         <div class="mb-3">
             <label class="form-label small text-muted">Preview</label>
             <div class="border rounded p-3 bg-light">
                 <strong>To: Jane Doe</strong>
-                <p id="verificationMessagePreview" class="mb-0" style="white-space: pre-wrap; word-wrap: break-word;">Hi Jane Doe, your order #ORD123 has been confirmed! Total: $8.00. Thank you!</p>
+                <p id="verificationMessagePreview" class="mb-0" style="white-space: pre-wrap; word-wrap: break-word;">{{ verification_message|replace('{customer_name}', 'Jane Doe')|replace('{order_id}', 'ORD123')|replace('{total_price}', '$8.00')|replace('{delivery_location}', 'SUTD')|replace('{delivery_time}', 'Tomorrow 3:00 PM') }}</p>
             </div>
         </div>
         <button class="btn-success" id="saveVerificationMessageBtn">
             <i class="bi bi-save"></i> Save Message
         </button>
     </div>
+</div>
+
+<!-- Broadcast to All Customers -->
+<div class="card mb-6">
+    <div class="card-header">
+        <h3 class="card-title mb-0"><i class="bi bi-megaphone"></i> Broadcast to All Customers</h3>
+        <p class="text-muted mb-0 small">Send a message to all customers with Telegram accounts. Optional image upload.</p>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Message</label>
+            <textarea class="form-control" id="customerBroadcastMessage" rows="3" placeholder="Enter the broadcast message"></textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Image (optional)</label>
+            <input type="file" class="form-control" id="customerBroadcastImageFile" accept="image/png, image/jpeg, image/webp">
+            <small class="text-muted">PNG/JPG/WebP up to 2MB.</small>
+        </div>
+        <button class="btn-success" id="customerBroadcastSendBtn">
+            <i class="bi bi-send"></i> Send Broadcast
+        </button>
+        <div id="customerBroadcastStatus" class="mt-2 text-muted small"></div>
+    </div>
 </div>{% endblock %}
 
 {% block extra_scripts %}
 <script>
-const brandingData = {{ branding|tojson }};
-const menuGroupsData = {{ menu_groups|tojson }};
-const pricingData = {{ pricing|tojson }};
+    const brandingData = {{ branding|tojson|default('null', true) }};
+    const menuGroupsData = {{ menu_groups|tojson|default('[]', true) }};
+    const pricingData = {{ pricing|tojson|default('null', true) }};
 
 let menuGroups = Array.isArray(menuGroupsData) ? JSON.parse(JSON.stringify(menuGroupsData)) : [];
 let branding = Object.assign({}, brandingData || {});
@@ -80,11 +185,13 @@ const saveMenuGroupsBtn = document.getElementById('saveMenuGroupsBtn');
 const addMenuGroupBtn = document.getElementById('addMenuGroupBtn');
 const saveBrandingBtn = document.getElementById('saveBrandingBtn');
 const savePricingBtn = document.getElementById('savePricingBtn');
-const addStoreBtn = document.getElementById('addStoreBtn');
-const saveStoreBtn = document.getElementById('saveStoreBtn');
 const verificationMessageInput = document.getElementById('verificationMessage');
 const saveVerificationMessageBtn = document.getElementById('saveVerificationMessageBtn');
 const verificationMessagePreview = document.getElementById('verificationMessagePreview');
+const customerBroadcastMessageInput = document.getElementById('customerBroadcastMessage');
+const customerBroadcastImageFileInput = document.getElementById('customerBroadcastImageFile');
+const customerBroadcastSendBtn = document.getElementById('customerBroadcastSendBtn');
+const customerBroadcastStatus = document.getElementById('customerBroadcastStatus');
 
 const daysOfWeek = [
     { key: 'monday', label: 'Monday' },
@@ -449,13 +556,17 @@ async function savePricing(event) {
     button.disabled = true;
     showLoading(button);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     try {
         const response = await fetch('/api/settings/pricing', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ value: { price_per_bowl: priceValue, currency: currencyValue } })
+            body: JSON.stringify({ value: { price_per_bowl: priceValue, currency: currencyValue } }),
+            signal: controller.signal
         });
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) {
             throw new Error(data.detail || data.message || 'Failed to update pricing');
         }
@@ -464,263 +575,16 @@ async function savePricing(event) {
         pricingCurrencyLabel.textContent = currencyValue;
         showToast('Pricing updated', 'success');
     } catch (error) {
-        console.error(error);
-        showToast(error.message || 'Unable to save pricing', 'danger');
+        if (error.name === 'AbortError') {
+            showToast('Pricing update timed out. Please try again.', 'danger');
+        } else {
+            console.error(error);
+            showToast(error.message || 'Unable to save pricing', 'danger');
+        }
     } finally {
+        clearTimeout(timeoutId);
         hideLoading(button);
         button.disabled = false;
-    }
-}
-
-function formatOperatingHours(hours) {
-    if (!hours || typeof hours !== 'object') {
-        return '<span class="text-muted">Not configured</span>';
-    }
-    const parts = [];
-    daysOfWeek.forEach(day => {
-        const detail = hours[day.key] || {};
-        const isClosed = detail.open === 'closed' || detail.closed === true;
-        if (isClosed) {
-            return;
-        }
-        if (detail.open && detail.close) {
-            parts.push(`<span class="badge bg-light text-dark me-1 mb-1">${day.label.slice(0, 3)} ${detail.open}-${detail.close}</span>`);
-        }
-    });
-    return parts.length ? parts.join('') : '<span class="text-muted">All days closed</span>';
-}
-
-        const safeName = escapeHtml(store.name || 'Untitled Store');
-        const safeAddress = escapeHtml(store.address || '-');
-        const storeId = store.store_id || '';
-        const storeIdLiteral = JSON.stringify(storeId);
-        const hoursHtml = formatOperatingHours(store.operating_hours);
-        const codeHtml = storeId ? `<code>${escapeHtml(storeId)}</code>` : '';
-        return `
-            <tr>
-                <td><strong>${safeName}</strong><br>${codeHtml}</td>
-                <td>${safeAddress || '-'}</td>
-                <td>${hoursHtml}</td>
-                <td>
-                    <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-primary store-edit-btn" type="button" data-store-id="${escapeHtml(storeId)}">
-                            <i class="bi bi-pencil"></i> Edit
-                        </button>
-                        <button class="btn btn-outline-danger store-remove-btn" type="button" data-store-id="${escapeHtml(storeId)}">
-                            <i class="bi bi-trash"></i> Remove
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
-
-    // Attach event listeners to the newly created buttons
-    document.querySelectorAll('.store-edit-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const storeId = this.getAttribute('data-store-id');
-            openStoreModal(storeId);
-        });
-    });
-
-    document.querySelectorAll('.store-remove-btn').forEach(btn => {
-        btn.addEventListener('click', function(event) {
-            const storeId = this.getAttribute('data-store-id');
-            removeStore(storeId, event);
-        });
-    });
-}
-
-const storeModalElement = document.getElementById('storeModal');
-const storeModal = storeModalElement ? new bootstrap.Modal(storeModalElement) : null;
-const storeHoursContainer = document.getElementById('storeHoursFields');
-
-function buildHoursRow(day, values = {}) {
-    const isClosed = values.open === 'closed' || values.closed === true;
-    const open = isClosed ? '' : (values.open || '');
-    const close = isClosed ? '' : (values.close || '');
-    return `
-        <div class="row g-2 align-items-center mb-2" data-day="${day.key}">
-            <div class="col-3 text-capitalize fw-semibold">${day.label}</div>
-            <div class="col-3">
-                <input type="time" class="form-control form-control-sm" data-field="open" value="${open}" ${isClosed ? 'disabled' : ''}>
-            </div>
-            <div class="col-3">
-                <input type="time" class="form-control form-control-sm" data-field="close" value="${close}" ${isClosed ? 'disabled' : ''}>
-            </div>
-            <div class="col-3 form-check">
-                <input class="form-check-input" type="checkbox" data-field="closed" ${isClosed ? 'checked' : ''}>
-                <label class="form-check-label small">Closed</label>
-            </div>
-        </div>
-    `;
-}
-
-function renderHoursFields(existingHours) {
-    if (!storeHoursContainer) return;
-    storeHoursContainer.innerHTML = daysOfWeek.map(day => buildHoursRow(day, existingHours ? existingHours[day.key] : {})).join('');
-    storeHoursContainer.querySelectorAll('[data-field="closed"]').forEach(checkbox => {
-        checkbox.addEventListener('change', event => {
-            const row = event.target.closest('[data-day]');
-            const openInput = row.querySelector('[data-field="open"]');
-            const closeInput = row.querySelector('[data-field="close"]');
-            const disabled = event.target.checked;
-            openInput.disabled = disabled;
-            closeInput.disabled = disabled;
-            if (disabled) {
-                openInput.value = '';
-                closeInput.value = '';
-            }
-        });
-    });
-}
-
-function capitalize(word) {
-    if (!word) return '';
-    return word.charAt(0).toUpperCase() + word.slice(1);
-}
-
-function collectStoreHours() {
-    if (!storeHoursContainer) return {};
-    const rows = storeHoursContainer.querySelectorAll('[data-day]');
-    const result = {};
-
-    rows.forEach(row => {
-        const day = row.getAttribute('data-day');
-        const openInput = row.querySelector('[data-field="open"]');
-        const closeInput = row.querySelector('[data-field="close"]');
-        const closed = row.querySelector('[data-field="closed"]').checked;
-
-        const open = openInput.value;
-        const close = closeInput.value;
-
-        if (closed || (!open && !close)) {
-            result[day] = { open: 'closed', close: 'closed' };
-            return;
-        }
-
-        if (!open || !close) {
-            throw new Error(`Please provide both opening and closing times for ${capitalize(day)} or mark it as closed.`);
-        }
-
-        if (open >= close) {
-            throw new Error(`${capitalize(day)} closing time must be after opening time.`);
-        }
-
-        result[day] = { open, close };
-    });
-
-    return result;
-}
-
-function openStoreModal(storeId = '') {
-    if (!storeModal) return;
-    document.getElementById('storeModalId').value = storeId || '';
-    const storeNameInput = document.getElementById('storeName');
-    const storeAddressInput = document.getElementById('storeAddress');
-
-    if (storeId) {
-        if (!store) {
-            showToast('Store not found', 'danger');
-            return;
-        }
-        storeNameInput.value = store.name || '';
-        storeAddressInput.value = store.address || '';
-        renderHoursFields(store.operating_hours || {});
-    } else {
-        storeNameInput.value = '';
-        storeAddressInput.value = '';
-        renderHoursFields();
-    }
-
-    storeModal.show();
-}
-
-        
-    } catch (error) {
-        console.error(error);
-    }
-}
-
-async function saveStore(event) {
-    if (event) event.preventDefault();
-    if (!storeModal) return;
-
-    const storeId = document.getElementById('storeModalId').value.trim();
-    const name = document.getElementById('storeName').value.trim();
-    const address = document.getElementById('storeAddress').value.trim();
-
-    if (!name) {
-        showToast('Store name is required', 'danger');
-        return;
-    }
-    if (!address) {
-        showToast('Store address is required', 'danger');
-        return;
-    }
-
-    let operatingHours;
-    try {
-        operatingHours = collectStoreHours();
-    } catch (error) {
-        showToast(error.message, 'danger');
-        return;
-    }
-
-    const payload = { name, address, operating_hours: operatingHours };
-    const button = saveStoreBtn;
-    if (button) {
-        button.disabled = true;
-        showLoading(button);
-    }
-
-    try {
-            method: storeId ? 'PATCH' : 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-            throw new Error(data.detail || data.message || 'Failed to save store');
-        }
-        storeModal.hide();
-        await 
-        showToast(storeId ? 'Store updated' : 'Store created', 'success');
-    } catch (error) {
-        console.error(error);
-        showToast(error.message || 'Unable to save store', 'danger');
-    } finally {
-        if (button) {
-            hideLoading(button);
-            button.disabled = false;
-        }
-    }
-}
-
-async function removeStore(storeId = '', event = null) {
-    if (!storeId) return;
-
-    const button = event?.currentTarget || null;
-    if (button) {
-        button.disabled = true;
-        showLoading(button);
-    }
-
-    try {
-        const payload = await response.json();
-        if (!response.ok || !payload.success) {
-            throw new Error(payload.detail || payload.message || 'Failed to remove store');
-        }
-        await 
-        showToast('Store removed', 'success');
-    } catch (error) {
-        console.error(error);
-        showToast(error.message || 'Unable to remove store', 'danger');
-    } finally {
-        if (button) {
-            hideLoading(button);
-            button.disabled = false;
-        }
     }
 }
 
@@ -781,6 +645,73 @@ async function saveVerificationMessage() {
     }
 }
 
+async function sendCustomerBroadcast() {
+    const message = (customerBroadcastMessageInput.value || '').trim();
+    const imageFile = customerBroadcastImageFileInput?.files?.[0];
+
+    if (!message) {
+        showToast('Message cannot be empty', 'danger');
+        return;
+    }
+    if (imageFile) {
+        if (!imageFile.type.startsWith('image/')) {
+            showToast('Please choose an image file (PNG/JPG/WebP)', 'danger');
+            return;
+        }
+        if (imageFile.size > 2 * 1024 * 1024) {
+            showToast('Image must be 2MB or smaller', 'danger');
+            return;
+        }
+    }
+
+    if (customerBroadcastSendBtn) {
+        customerBroadcastSendBtn.disabled = true;
+        showLoading(customerBroadcastSendBtn);
+    }
+    if (customerBroadcastStatus) {
+        customerBroadcastStatus.textContent = 'Sending...';
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('message', message);
+        if (imageFile) {
+            formData.append('image', imageFile);
+        }
+
+        const response = await fetch('/api/customers/broadcast', {
+            method: 'POST',
+            body: formData
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.detail || payload.message || 'Failed to send broadcast');
+        }
+        const failed = payload.failed || [];
+        const sent = payload.sent || 0;
+        if (customerBroadcastStatus) {
+            customerBroadcastStatus.textContent = `Sent to ${sent} recipient(s)` + (failed.length ? `, ${failed.length} failed` : '');
+        }
+        if (failed.length) {
+            showToast(`Sent to ${sent}, ${failed.length} failed`, 'warning');
+            console.warn('Customer broadcast failures', failed);
+        } else {
+            showToast(`Sent to ${sent} recipient(s)`, 'success');
+        }
+    } catch (error) {
+        console.error(error);
+        if (customerBroadcastStatus) {
+            customerBroadcastStatus.textContent = 'Send failed';
+        }
+        showToast('Unable to send broadcast: ' + error.message, 'danger');
+    } finally {
+        if (customerBroadcastSendBtn) {
+            hideLoading(customerBroadcastSendBtn);
+            customerBroadcastSendBtn.disabled = false;
+        }
+    }
+}
+
 if (addMenuGroupBtn) {
     addMenuGroupBtn.addEventListener('click', addMenuGroup);
 }
@@ -795,14 +726,6 @@ if (saveBrandingBtn) {
 
 if (savePricingBtn) {
     savePricingBtn.addEventListener('click', savePricing);
-}
-
-if (addStoreBtn) {
-    addStoreBtn.addEventListener('click', () => openStoreModal());
-}
-
-if (saveStoreBtn) {
-    saveStoreBtn.addEventListener('click', saveStore);
 }
 
 if (brandingTitleInput) {
@@ -845,6 +768,10 @@ if (verificationMessageInput) {
 
 if (saveVerificationMessageBtn) {
     saveVerificationMessageBtn.addEventListener('click', saveVerificationMessage);
+}
+
+if (customerBroadcastSendBtn) {
+    customerBroadcastSendBtn.addEventListener('click', sendCustomerBroadcast);
 }
 
 setBrandingUploadState(false);
