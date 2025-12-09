@@ -71,6 +71,22 @@
         </div>
     </div>
     <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Menu Image (optional)</label>
+            <input class="form-control" type="file" id="menuImageFile" accept="image/png, image/jpeg, image/webp">
+            <div id="menuImageUploadStatus" class="form-text">PNG/JPG/WebP up to 2MB. Uploading will save and show in the Telegram menu.</div>
+            <div class="d-flex align-items-center gap-3 mt-3">
+                <div class="flex-shrink-0" style="width: 160px;">
+                    <img id="menuPreviewImage" class="img-fluid rounded shadow-sm" alt="Menu preview" src="{{ menu_image or '' }}" {% if not menu_image %}style="display:none;"{% endif %}>
+                    <div id="menuPreviewImagePlaceholder" class="border rounded d-flex align-items-center justify-content-center text-muted py-4 px-3" {% if menu_image %}style="display:none;"{% endif %}>
+                        No image uploaded
+                    </div>
+                </div>
+                <button class="btn btn-outline-secondary btn-sm" type="button" id="clearMenuImageBtn">
+                    <i class="bi bi-eraser"></i> Remove Image
+                </button>
+            </div>
+        </div>
         <div id="menuGroupsContainer" class="row g-3"></div>
     </div>
 </div>
@@ -118,6 +134,7 @@
         <div class="mb-3">
             <label class="form-label">Message</label>
             <textarea class="form-control" id="customerBroadcastMessage" rows="3" placeholder="Enter the broadcast message"></textarea>
+            <small class="text-muted">You can use <code>{customer_name}</code> to personalize each message.</small>
         </div>
         <div class="mb-3">
             <label class="form-label">Image (optional)</label>
@@ -148,9 +165,15 @@ const brandingImagePlaceholder = document.getElementById('brandingPreviewImagePl
 const brandingImageFileInput = document.getElementById('brandingImageFile');
 const brandingImageUploadStatus = document.getElementById('brandingImageUploadStatus');
 const clearBrandingImageBtn = document.getElementById('clearBrandingImageBtn');
+const menuImageFileInput = document.getElementById('menuImageFile');
+const menuImageUploadStatus = document.getElementById('menuImageUploadStatus');
+const menuPreviewImage = document.getElementById('menuPreviewImage');
+const menuPreviewImagePlaceholder = document.getElementById('menuPreviewImagePlaceholder');
+const clearMenuImageBtn = document.getElementById('clearMenuImageBtn');
 
 // Track the current branding image URL
 let currentBrandingImageUrl = branding.image_url || '';
+let currentMenuImageUrl = {{ menu_image|tojson|default('""', true) }};
 const saveMenuGroupsBtn = document.getElementById('saveMenuGroupsBtn');
 const addMenuGroupBtn = document.getElementById('addMenuGroupBtn');
 const saveBrandingBtn = document.getElementById('saveBrandingBtn');
@@ -236,8 +259,29 @@ function updateBrandingImagePreview() {
     }
 }
 
+function updateMenuImagePreview() {
+    if (!menuPreviewImage || !menuPreviewImagePlaceholder) return;
+    const url = (currentMenuImageUrl || '').trim();
+    if (url) {
+        menuPreviewImage.src = url;
+        menuPreviewImage.style.display = 'block';
+        menuPreviewImagePlaceholder.style.display = 'none';
+        if (clearMenuImageBtn) {
+            clearMenuImageBtn.disabled = false;
+        }
+    } else {
+        menuPreviewImage.removeAttribute('src');
+        menuPreviewImage.style.display = 'none';
+        menuPreviewImagePlaceholder.style.display = 'flex';
+        if (clearMenuImageBtn) {
+            clearMenuImageBtn.disabled = true;
+        }
+    }
+}
+
 const BRANDING_IMAGE_MAX_SIZE = 2 * 1024 * 1024;
 const BRANDING_UPLOAD_HELP_TEXT = 'PNG/JPG/WebP up to 2MB. Uploading will automatically update the preview and save the image.';
+const MENU_UPLOAD_HELP_TEXT = 'PNG/JPG/WebP up to 2MB. Uploading will save and show in the Telegram menu.';
 
 function setBrandingUploadState(isUploading) {
     if (brandingImageFileInput) {
@@ -245,6 +289,15 @@ function setBrandingUploadState(isUploading) {
     }
     if (brandingImageUploadStatus) {
         brandingImageUploadStatus.textContent = isUploading ? 'Uploading image…' : BRANDING_UPLOAD_HELP_TEXT;
+    }
+}
+
+function setMenuUploadState(isUploading) {
+    if (menuImageFileInput) {
+        menuImageFileInput.disabled = isUploading;
+    }
+    if (menuImageUploadStatus) {
+        menuImageUploadStatus.textContent = isUploading ? 'Uploading image…' : MENU_UPLOAD_HELP_TEXT;
     }
 }
 
@@ -288,6 +341,50 @@ async function handleBrandingImageFileChange(event) {
         showToast(error.message || 'Unable to upload image', 'danger');
     } finally {
         setBrandingUploadState(false);
+        event.target.value = '';
+    }
+}
+
+async function handleMenuImageFileChange(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    if (!file.type || !file.type.startsWith('image/')) {
+        showToast('Please choose an image file (PNG/JPG/WebP).', 'warning');
+        event.target.value = '';
+        return;
+    }
+
+    if (file.size > BRANDING_IMAGE_MAX_SIZE) {
+        showToast('Image must be 2MB or smaller.', 'danger');
+        event.target.value = '';
+        return;
+    }
+
+    setMenuUploadState(true);
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/settings/menu-image', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success || !data.url) {
+            throw new Error(data.detail || data.message || 'Failed to upload menu image');
+        }
+
+        currentMenuImageUrl = data.url;
+        updateMenuImagePreview();
+        showToast('Menu image uploaded', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Unable to upload menu image', 'danger');
+    } finally {
+        setMenuUploadState(false);
         event.target.value = '';
     }
 }
@@ -694,6 +791,18 @@ if (clearBrandingImageBtn) {
     });
 }
 
+if (menuImageFileInput) {
+    menuImageFileInput.addEventListener('change', handleMenuImageFileChange);
+}
+
+if (clearMenuImageBtn) {
+    clearMenuImageBtn.addEventListener('click', () => {
+        currentMenuImageUrl = '';
+        updateMenuImagePreview();
+        showToast('Menu image cleared.', 'info');
+    });
+}
+
 if (verificationMessageInput) {
     verificationMessageInput.addEventListener('input', updateVerificationMessagePreview);
 }
@@ -710,6 +819,7 @@ setBrandingUploadState(false);
 renderMenuGroups();
 renderBrandingPreview();
 updateBrandingImagePreview();
+updateMenuImagePreview();
 
 loadVerificationMessage();
 

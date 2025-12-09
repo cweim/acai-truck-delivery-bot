@@ -82,6 +82,13 @@ async def _send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Force refresh so latest menu (with per-option prices) is shown immediately
     menu = get_menu_data(force_refresh=True)
     groups = menu.get("groups", [])
+    menu_image = None
+    try:
+        from database.supabase_client import get_db
+        menu_image = get_db().get_menu_image()
+    except Exception:
+        menu_image = None
+
     message_lines = ["📋 **Our Menu**", ""]
 
     # Display each menu group dynamically
@@ -105,6 +112,19 @@ async def _send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_lines.append("")
 
     message = "\n".join(message_lines).rstrip()
+
+    if menu_image:
+        try:
+            await update.message.reply_photo(
+                photo=menu_image,
+                caption=message,
+                reply_markup=get_main_keyboard(),
+                parse_mode="Markdown"
+            )
+            return
+        except Exception:
+            # Fallback to text if photo send fails
+            pass
 
     await update.message.reply_text(
         message,

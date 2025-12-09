@@ -366,6 +366,7 @@ async def settings_page(request: Request, admin: Dict = Depends(verify_admin_cre
     # Get all settings
     menu_groups = db.get_menu_groups()
     branding = db.get_bot_branding()
+    menu_image = db.get_menu_image()
     verification_setting = db.get_setting('order_verification_message')
     default_verification = "Hi {customer_name}, your order #{order_id} has been confirmed! Total: {total_price}. Thank you!"
     if isinstance(verification_setting, dict):
@@ -380,6 +381,7 @@ async def settings_page(request: Request, admin: Dict = Depends(verify_admin_cre
         "admin": admin,
         "menu_groups": menu_groups,
         "branding": branding,
+        "menu_image": menu_image,
         "verification_message": verification_message
     }
 
@@ -647,6 +649,31 @@ async def upload_branding_image(
     return {"success": True, "url": url}
 
 
+@app.post("/api/settings/menu-image")
+async def upload_menu_image(
+    file: UploadFile = File(...),
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Upload a menu image to Supabase storage"""
+    extension = os.path.splitext(file.filename or "")[1].lower()
+    if extension not in BRANDING_IMAGE_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Use PNG, JPG, JPEG, GIF, or WebP.")
+
+    contents = await file.read()
+    if len(contents) > BRANDING_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be 2MB or smaller")
+
+    object_name = f"menu/{uuid.uuid4().hex}{extension}"
+    db = get_db()
+    url = db.upload_branding_image(object_name, contents, file.content_type)
+    if not url:
+        raise HTTPException(status_code=500, detail="Failed to upload menu image")
+
+    db.update_menu_image(url)
+    invalidate_menu_cache()
+    return {"success": True, "url": url}
+
+
 # --- Delivery Orders API ---
 
 @app.get("/api/delivery-orders")
@@ -856,7 +883,9 @@ async def broadcast_delivery_message(
         if not telegram_id:
             results.append({"telegram_user_id": None, "success": False, "error": "Missing telegram user id"})
             continue
-        success, error = await send_broadcast_message(telegram_id, message, image_url_final or None)
+        customer_name = user.get('name') or user.get('telegram_handle') or 'Customer'
+        personalized = message.replace('{customer_name}', customer_name)
+        success, error = await send_broadcast_message(telegram_id, personalized, image_url_final or None)
         results.append({"telegram_user_id": telegram_id, "success": success, "error": error})
 
     sent = sum(1 for r in results if r["success"])
@@ -906,7 +935,9 @@ async def broadcast_customers_message(
         if not telegram_id:
             results.append({"telegram_user_id": None, "success": False, "error": "Missing telegram user id"})
             continue
-        success, error = await send_broadcast_message(telegram_id, message, image_url_final or None)
+        customer_name = user.get('name') or user.get('telegram_handle') or 'Customer'
+        personalized = message.replace('{customer_name}', customer_name)
+        success, error = await send_broadcast_message(telegram_id, personalized, image_url_final or None)
         results.append({"telegram_user_id": telegram_id, "success": success, "error": error})
 
     sent = sum(1 for r in results if r["success"])

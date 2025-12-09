@@ -181,26 +181,37 @@ async def select_delivery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Store delivery in context
     context.user_data['delivery'] = selected_delivery
 
-    # Check if user is registered
-    users = read_json('data/users.json')
+    # Check if user is registered (Supabase first, then local cache)
     user_id = str(update.effective_user.id)
     logger.info(f"Checking if user {user_id} is registered")
 
+    db = get_db()
+    supa_user = db.get_user(int(user_id))
+    if supa_user:
+        logger.info(f"User {user_id} found in Supabase")
+        context.user_data['user_info'] = {
+            'name': supa_user.get('name') or 'Unknown',
+            'handle': supa_user.get('telegram_handle') or update.effective_user.username or '',
+            'phone': supa_user.get('phone') or 'Unknown'
+        }
+        result = await start_menu_selection_from_query(query, context)
+        return QUANTITY if result == "quantity" else MENU_SELECTION
+
+    users = read_json('data/users.json')
     if user_id in users:
-        # User exists, skip to menu selections
-        logger.info(f"User {user_id} is registered: {users[user_id]}")
+        logger.info(f"User {user_id} found in local cache")
         context.user_data['user_info'] = users[user_id]
         result = await start_menu_selection_from_query(query, context)
         return QUANTITY if result == "quantity" else MENU_SELECTION
-    else:
-        # New user - collect name
-        logger.info(f"User {user_id} is new, requesting registration")
-        await query.edit_message_text(
-            "👤 **User Registration**\n\n"
-            "Please enter your full name:",
-            parse_mode='Markdown'
-        )
-        return REGISTER_NAME
+
+    # New user - collect name
+    logger.info(f"User {user_id} is new, requesting registration")
+    await query.edit_message_text(
+        "👤 **User Registration**\n\n"
+        "Please enter your full name:",
+        parse_mode='Markdown'
+    )
+    return REGISTER_NAME
 
 
 async def register_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,6 +262,19 @@ async def register_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'phone': phone
     }
 
+    # Persist to Supabase
+    try:
+        db = get_db()
+        db.create_or_update_user(
+            telegram_user_id=int(user_id),
+            name=user_info['name'],
+            telegram_handle=user_handle,
+            phone=phone
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to save user to Supabase: {exc}")
+
+    # Fallback local cache
     users = read_json('data/users.json')
     users[user_id] = user_info
     write_json('data/users.json', users)

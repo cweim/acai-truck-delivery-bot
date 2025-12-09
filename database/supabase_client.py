@@ -222,6 +222,19 @@ class SupabaseDB:
         """Update bot branding configuration"""
         return self.update_setting('bot_branding', branding)
 
+    def get_menu_image(self) -> Optional[str]:
+        """Get menu image URL if set"""
+        value = self.get_setting('menu_image')
+        if isinstance(value, dict):
+            return value.get('url')
+        if isinstance(value, str):
+            return value
+        return None
+
+    def update_menu_image(self, url: str) -> bool:
+        """Save menu image URL"""
+        return self.update_setting('menu_image', {"url": url})
+
     # ==================== PICKUP STORES ====================
 
     def get_pickup_stores(self, active_only: bool = True) -> List[Dict]:
