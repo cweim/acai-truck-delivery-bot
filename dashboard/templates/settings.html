@@ -9,7 +9,7 @@
 {% block content %}
 <!-- Page Header -->
 <div class="page-header">
-    <p class="page-subtitle">Adjust menu options, branding, and pricing</p>
+    <p class="page-subtitle">Adjust menu options, branding, and messaging</p>
 </div>
 
 <div class="card mb-6">
@@ -50,29 +50,6 @@
         </div>
         <button class="btn-success" id="saveBrandingBtn">
             <i class="bi bi-save"></i> Save Branding
-        </button>
-    </div>
-</div>
-
-<div class="card mb-6">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <div>
-            <h3 class="card-title mb-0"><i class="bi bi-cash-stack"></i> Pricing</h3>
-            <p class="mb-0 text-muted small">Set the base bowl price and currency shown to users</p>
-        </div>
-    </div>
-    <div class="card-body">
-        <div class="mb-3">
-            <label class="form-label">Price per bowl (<span id="pricingCurrencyLabel">{{ pricing.currency or 'SGD' }}</span>)</label>
-            <input type="number" class="form-control" id="pricePerBowl" step="0.01" value="{{ pricing.price_per_bowl }}">
-        </div>
-        <div class="mb-3">
-            <label class="form-label">Currency</label>
-            <input type="text" class="form-control text-uppercase" id="currency" maxlength="3" value="{{ pricing.currency or 'SGD' }}" placeholder="SGD">
-            <small class="text-muted">Use a 3-letter currency code (e.g., SGD, USD).</small>
-        </div>
-        <button class="btn-success" id="savePricingBtn">
-            <i class="bi bi-save"></i> Save Pricing
         </button>
     </div>
 </div>
@@ -158,12 +135,9 @@
 <script>
     const brandingData = {{ branding|tojson|default('null', true) }};
     const menuGroupsData = {{ menu_groups|tojson|default('[]', true) }};
-    const pricingData = {{ pricing|tojson|default('null', true) }};
 
 let menuGroups = Array.isArray(menuGroupsData) ? JSON.parse(JSON.stringify(menuGroupsData)) : [];
 let branding = Object.assign({}, brandingData || {});
-let pricing = Object.assign({}, pricingData || {});
-
 const menuGroupsContainer = document.getElementById('menuGroupsContainer');
 const brandingTitleInput = document.getElementById('brandingTitle');
 const brandingSubtitleInput = document.getElementById('brandingSubtitle');
@@ -177,14 +151,9 @@ const clearBrandingImageBtn = document.getElementById('clearBrandingImageBtn');
 
 // Track the current branding image URL
 let currentBrandingImageUrl = branding.image_url || '';
-const pricingCurrencyLabel = document.getElementById('pricingCurrencyLabel');
-const pricePerBowlInput = document.getElementById('pricePerBowl');
-const currencyInput = document.getElementById('currency');
-
 const saveMenuGroupsBtn = document.getElementById('saveMenuGroupsBtn');
 const addMenuGroupBtn = document.getElementById('addMenuGroupBtn');
 const saveBrandingBtn = document.getElementById('saveBrandingBtn');
-const savePricingBtn = document.getElementById('savePricingBtn');
 const verificationMessageInput = document.getElementById('verificationMessage');
 const saveVerificationMessageBtn = document.getElementById('saveVerificationMessageBtn');
 const verificationMessagePreview = document.getElementById('verificationMessagePreview');
@@ -337,11 +306,14 @@ function renderMenuGroups() {
         const safeTitle = escapeHtml(group.title || '');
         const options = (group.options && group.options.length ? group.options : ['']);
         const optionsHtml = options.map((option, optionIndex) => {
-            const safeOption = escapeHtml(option || '');
+            const optionName = typeof option === 'object' ? (option.name || '') : (option || '');
+            const optionPrice = typeof option === 'object' ? (option.price ?? '') : '';
+            const safeOption = escapeHtml(optionName);
             return `
-                <div class="input-group input-group-sm mb-2" data-option-index="${optionIndex}">
+                <div class="input-group input-group-sm mb-2 align-items-center" data-option-index="${optionIndex}">
                     <input type="text" class="form-control option-input" value="${safeOption}" placeholder="Option name">
-                    <button class="btn btn-outline-danger" type="button" onclick="removeMenuOption(${index}, ${optionIndex})">
+                    ${index === 0 ? `<input type="number" class="form-control option-price-input ms-2" value="${optionPrice !== '' ? optionPrice : ''}" step="0.01" min="0" placeholder="Price (SGD)" style="max-width: 140px;">` : ''}
+                    <button class="btn btn-outline-danger ms-2" type="button" onclick="removeMenuOption(${index}, ${optionIndex})">
                         <i class="bi bi-x"></i>
                     </button>
                 </div>
@@ -386,8 +358,17 @@ function collectMenuGroupValues() {
         const original = currentGroups[domIndex] || {};
         const titleInput = card.querySelector('.group-title');
         const optionInputs = card.querySelectorAll('.option-input');
+        const priceInputs = card.querySelectorAll('.option-price-input');
         const title = titleInput ? titleInput.value.trim() : '';
-        const options = Array.from(optionInputs).map(input => input.value.trim());
+        const options = Array.from(optionInputs).map((input, idx) => {
+            const name = input.value.trim();
+            if (card.dataset.groupIndex === '0') {
+                const priceInput = priceInputs[idx];
+                const price = priceInput ? parseFloat(priceInput.value || '0') : 0;
+                return { name, price };
+            }
+            return name;
+        });
 
         let id = (original.id || '').trim();
         if (!id) {
@@ -455,16 +436,32 @@ async function saveMenuGroups(event) {
 
     const usedIds = new Set();
     const sanitizedGroups = [];
-    for (const group of menuGroups) {
+    menuGroups.forEach((group, idx) => {
         const title = (group.title || '').trim();
         if (!title) {
             showToast('Each group must have a title', 'danger');
             return;
         }
-        const options = (group.options || []).map(option => option.trim()).filter(Boolean);
-        if (!options.length) {
-            showToast(`"${title}" must contain at least one option`, 'danger');
-            return;
+
+        let options = (group.options || []);
+        if (idx === 0) {
+            // First group: options are objects with name + price
+            options = options.map(opt => {
+                const name = (opt.name || '').trim();
+                const price = parseFloat(opt.price || '0');
+                return { name, price };
+            }).filter(opt => opt.name);
+
+            if (!options.length) {
+                showToast(`"${title}" must contain at least one option`, 'danger');
+                return;
+            }
+        } else {
+            options = options.map(opt => (typeof opt === 'string' ? opt.trim() : (opt.name || '').trim())).filter(Boolean);
+            if (!options.length) {
+                showToast(`"${title}" must contain at least one option`, 'danger');
+                return;
+            }
         }
 
         let id = (group.id || '').trim();
@@ -476,7 +473,7 @@ async function saveMenuGroups(event) {
         id = makeUniqueSlug(id, usedIds);
 
         sanitizedGroups.push({ id, title, options });
-    }
+    });
 
     const button = saveMenuGroupsBtn;
     if (!button) return;
@@ -489,7 +486,7 @@ async function saveMenuGroups(event) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ groups: sanitizedGroups })
         });
-        const payload = await response.json();
+        const payload = await response.json().catch(() => ({}));
         if (!response.ok || !payload.success) {
             throw new Error(payload.detail || payload.message || 'Failed to update menu options');
         }
@@ -536,53 +533,6 @@ async function saveBranding(event) {
         console.error(error);
         showToast(error.message || 'Unable to save branding', 'danger');
     } finally {
-        hideLoading(button);
-        button.disabled = false;
-    }
-}
-
-async function savePricing(event) {
-    if (event) event.preventDefault();
-    const priceValue = parseFloat(pricePerBowlInput.value || '0');
-    const currencyValue = (currencyInput.value || '').trim().toUpperCase();
-
-    if (!currencyValue || currencyValue.length !== 3) {
-        showToast('Currency must be a 3-letter code', 'danger');
-        return;
-    }
-
-    const button = savePricingBtn;
-    if (!button) return;
-    button.disabled = true;
-    showLoading(button);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-    try {
-        const response = await fetch('/api/settings/pricing', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ value: { price_per_bowl: priceValue, currency: currencyValue } }),
-            signal: controller.signal
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.success) {
-            throw new Error(data.detail || data.message || 'Failed to update pricing');
-        }
-        pricing.currency = currencyValue;
-        pricing.price_per_bowl = priceValue;
-        pricingCurrencyLabel.textContent = currencyValue;
-        showToast('Pricing updated', 'success');
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            showToast('Pricing update timed out. Please try again.', 'danger');
-        } else {
-            console.error(error);
-            showToast(error.message || 'Unable to save pricing', 'danger');
-        }
-    } finally {
-        clearTimeout(timeoutId);
         hideLoading(button);
         button.disabled = false;
     }
@@ -724,10 +674,6 @@ if (saveBrandingBtn) {
     saveBrandingBtn.addEventListener('click', saveBranding);
 }
 
-if (savePricingBtn) {
-    savePricingBtn.addEventListener('click', savePricing);
-}
-
 if (brandingTitleInput) {
     brandingTitleInput.addEventListener('input', renderBrandingPreview);
 }
@@ -746,20 +692,6 @@ if (clearBrandingImageBtn) {
         updateBrandingImagePreview();
         showToast('Branding image cleared. Don\'t forget to save branding.', 'info');
     });
-}
-
-if (currencyInput) {
-    currencyInput.addEventListener('input', () => {
-        const value = (currencyInput.value || '').trim().toUpperCase();
-        if (pricingCurrencyLabel) {
-            pricingCurrencyLabel.textContent = value || (pricing.currency || 'SGD');
-        }
-    });
-    currencyInput.value = (currencyInput.value || '').trim().toUpperCase();
-}
-
-if (pricingCurrencyLabel) {
-    pricingCurrencyLabel.textContent = (pricing.currency || pricingCurrencyLabel.textContent || 'SGD').toUpperCase();
 }
 
 if (verificationMessageInput) {

@@ -15,15 +15,11 @@ CACHE_TTL = 300
 
 
 def get_menu_data(force_refresh: bool = False) -> Dict[str, object]:
-    """Fetch menu groups and pricing from Supabase with fallback.
-
-    Caching is skipped so Telegram always sees the latest pricing/menu immediately.
-    """
+    """Fetch menu groups (first group has per-option pricing) from Supabase with fallback."""
 
     try:
         db = get_db()
         groups = db.get_menu_groups()
-        pricing = db.get_pricing()
     except Exception as exc:
         logger.warning("Failed to load menu from Supabase, using defaults: %s", exc)
         groups = [
@@ -31,16 +27,19 @@ def get_menu_data(force_refresh: bool = False) -> Dict[str, object]:
                 "id": "flavor",
                 "key": "flavor",
                 "title": "Menu Flavors",
-                "options": ["Classic Acai", "Protein Acai", "Vegan Acai"]
+                "options": [
+                    {"name": "Classic Acai", "price": 8.0},
+                    {"name": "Protein Acai", "price": 9.0},
+                    {"name": "Vegan Acai", "price": 8.5},
+                ],
             },
             {
                 "id": "sauce",
                 "key": "sauce",
                 "title": "Sauce Options",
-                "options": ["Honey", "Peanut Butter", "Nutella", "No Sauce"]
-            }
+                "options": ["Honey", "Peanut Butter", "Nutella", "No Sauce"],
+            },
         ]
-        pricing = {"price_per_bowl": 8.0, "currency": "SGD"}
 
     # Sanity check groups
     sanitized_groups = []
@@ -61,13 +60,14 @@ def get_menu_data(force_refresh: bool = False) -> Dict[str, object]:
                 "id": "flavor",
                 "key": "flavor",
                 "title": "Menu Flavors",
-                "options": ["Classic Acai", "Protein Acai", "Vegan Acai"]
+                "options": [
+                    {"name": "Classic Acai", "price": 8.0},
+                ],
             }
         ]
 
     menu_data = {
         "groups": sanitized_groups,
-        "pricing": pricing,
     }
     return menu_data
 

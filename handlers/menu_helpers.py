@@ -10,7 +10,6 @@ def cache_menu_data(context: ContextTypes.DEFAULT_TYPE) -> Dict[str, Any]:
     # Force refresh so pricing/menu changes reflect immediately in bot sessions
     menu = get_menu_data(force_refresh=True)
     context.user_data['menu_groups'] = menu.get('groups', [])
-    context.user_data['menu_pricing'] = menu.get('pricing', {})
     return menu
 
 
@@ -31,7 +30,13 @@ def reset_menu_selection(context: ContextTypes.DEFAULT_TYPE):
 def build_menu_keyboard(group: Dict[str, Any], index: int) -> InlineKeyboardMarkup:
     keyboard = []
     for option_index, option in enumerate(group.get('options', [])):
-        keyboard.append([InlineKeyboardButton(option, callback_data=f"menu_{index}_{option_index}")])
+        if isinstance(option, dict):
+            label = option.get('name') or option.get('title') or option.get('label') or 'Option'
+            if index == 0 and option.get('price') is not None:
+                label = f"{label} (${float(option.get('price')):.2f})"
+        else:
+            label = option
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"menu_{index}_{option_index}")])
     keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -43,9 +48,13 @@ def accumulate_menu_selections(context: ContextTypes.DEFAULT_TYPE):
     for idx, group in enumerate(groups):
         value = choices.get(idx)
         if value:
+            if isinstance(value, dict):
+                display_value = value.get('name') or value.get('title') or value.get('label') or ''
+            else:
+                display_value = value
             selections.append({
                 "title": group.get('title', f"Option {idx + 1}"),
-                "value": value,
+                "value": display_value,
                 "key": group.get('key') or group.get('id') or f"option_{idx}"
             })
     context.user_data['menu_selections'] = selections

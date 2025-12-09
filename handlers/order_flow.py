@@ -291,7 +291,16 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("Option unavailable", show_alert=True)
         return MENU_SELECTION
 
-    context.user_data.setdefault('menu_choices', {})[group_index] = options[option_index]
+    selected_option = options[option_index]
+    context.user_data.setdefault('menu_choices', {})[group_index] = selected_option
+    if group_index == 0:
+        # If option is dict with price, capture it
+        if isinstance(selected_option, dict):
+            context.user_data['main_option_price'] = selected_option.get('price', 0)
+            context.user_data['flavor'] = selected_option.get('name', '')
+        else:
+            context.user_data['main_option_price'] = 0
+            context.user_data['flavor'] = str(selected_option)
     context.user_data['menu_index'] = group_index + 1
 
     result = await prompt_menu_option_via_query(query, context)
@@ -309,10 +318,12 @@ async def select_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     quantity = int(query.data.replace("qty_", ""))
 
-    pricing = context.user_data.get('menu_pricing')
-    if not pricing:
-        pricing = cache_menu_data(context).get('pricing', {})
-    unit_price = pricing.get('price_per_bowl', 8.0)
+    main_price = context.user_data.get('main_option_price')
+    if main_price is None:
+        # Fallback: reload menu and try to derive from first group selection
+        cache_menu_data(context)
+        main_price = context.user_data.get('main_option_price', 8.0)
+    unit_price = float(main_price or 0)
 
     # Ensure selections are captured
     accumulate_menu_selections(context)

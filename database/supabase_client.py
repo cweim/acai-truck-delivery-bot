@@ -103,48 +103,85 @@ class SupabaseDB:
                 "id": "flavor",
                 "key": "flavor",
                 "title": "Menu Flavors",
-                "options": ["Classic Acai", "Protein Acai", "Vegan Acai"]
+                "options": [
+                    {"name": "Classic Acai", "price": 8.0},
+                    {"name": "Protein Acai", "price": 9.0},
+                    {"name": "Vegan Acai", "price": 8.5},
+                ],
             },
             {
                 "id": "sauce",
                 "key": "sauce",
                 "title": "Sauce Options",
-                "options": ["Honey", "Peanut Butter", "Nutella", "No Sauce"]
-            }
+                "options": ["Honey", "Peanut Butter", "Nutella", "No Sauce"],
+            },
         ]
 
     def get_menu_groups(self) -> List[Dict[str, Any]]:
-        """Get configurable menu option groups"""
+        """Get configurable menu option groups (first group supports price per option)"""
         groups = self.get_setting('menu_groups')
-        if groups:
-            return groups
 
-        # Backwards compatibility with legacy settings
-        legacy_flavors = self.get_setting('menu_flavors') or []
-        legacy_sauces = self.get_setting('menu_sauces') or []
-        if legacy_flavors or legacy_sauces:
-            groups = []
-            if legacy_flavors:
-                groups.append({
-                    "id": "flavor",
-                    "key": "flavor",
-                    "title": "Menu Flavors",
-                    "options": legacy_flavors
-                })
-            if legacy_sauces:
-                groups.append({
-                    "id": "sauce",
-                    "key": "sauce",
-                    "title": "Sauce Options",
-                    "options": legacy_sauces
-                })
-            if groups:
-                self.update_setting('menu_groups', groups)
-                return groups
+        if not groups:
+            # Backwards compatibility with legacy settings
+            legacy_flavors = self.get_setting('menu_flavors') or []
+            legacy_sauces = self.get_setting('menu_sauces') or []
+            if legacy_flavors or legacy_sauces:
+                groups = []
+                if legacy_flavors:
+                    groups.append({
+                        "id": "flavor",
+                        "key": "flavor",
+                        "title": "Menu Flavors",
+                        "options": [{"name": opt, "price": 8.0} for opt in legacy_flavors],
+                    })
+                if legacy_sauces:
+                    groups.append({
+                        "id": "sauce",
+                        "key": "sauce",
+                        "title": "Sauce Options",
+                        "options": legacy_sauces,
+                    })
+            if not groups:
+                default_groups = self._default_menu_groups()
+                self.update_setting('menu_groups', default_groups)
+                return default_groups
 
-        default_groups = self._default_menu_groups()
-        self.update_setting('menu_groups', default_groups)
-        return default_groups
+        # Normalize first group options to objects with name/price, others as names
+        normalized = []
+        for idx, group in enumerate(groups):
+            options = group.get("options") or []
+            normalized_options = []
+            if idx == 0:
+                for opt in options:
+                    if isinstance(opt, dict):
+                        name = opt.get("name") or opt.get("title") or opt.get("label") or ""
+                        price = float(opt.get("price", 0) or 0)
+                    else:
+                        name = str(opt)
+                        price = 8.0
+                    if not name:
+                        continue
+                    normalized_options.append({"name": name, "price": price})
+            else:
+                for opt in options:
+                    if isinstance(opt, dict):
+                        name = opt.get("name") or opt.get("title") or opt.get("label") or ""
+                    else:
+                        name = str(opt)
+                    if not name:
+                        continue
+                    normalized_options.append(name)
+
+            normalized.append({
+                "id": group.get("id") or group.get("key") or f"group-{idx+1}",
+                "key": group.get("key") or group.get("id") or f"group-{idx+1}",
+                "title": group.get("title") or f"Option Group {idx+1}",
+                "options": normalized_options
+            })
+
+        # Persist normalized shape for consistency
+        self.update_setting('menu_groups', normalized)
+        return normalized
 
     def save_menu_groups(self, groups: List[Dict[str, Any]]) -> bool:
         """Persist menu groups configuration"""
@@ -165,9 +202,8 @@ class SupabaseDB:
         return ["Honey", "Peanut Butter", "Nutella", "No Sauce"]
 
     def get_pricing(self) -> Dict:
-        """Get pricing configuration"""
-        pricing = self.get_setting('pricing')
-        return pricing if pricing else {"price_per_bowl": 8.00, "currency": "SGD"}
+        """Deprecated: pricing now lives per option in the first menu group. Kept for compatibility."""
+        return {"price_per_bowl": 0, "currency": "SGD"}
 
     def get_bot_branding(self) -> Dict[str, Any]:
         """Get bot branding configuration"""

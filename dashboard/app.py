@@ -7,7 +7,7 @@ import re
 from datetime import datetime, date, timedelta
 import uuid
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Depends, status, Request, Form, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, status, Request, Form, UploadFile, File, Body
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -167,7 +167,7 @@ class SettingUpdate(BaseModel):
 class MenuGroup(BaseModel):
     id: Optional[str] = None
     title: str
-    options: List[str]
+    options: List[Any]
 
 
 class MenuGroupsUpdate(BaseModel):
@@ -365,7 +365,6 @@ async def settings_page(request: Request, admin: Dict = Depends(verify_admin_cre
 
     # Get all settings
     menu_groups = db.get_menu_groups()
-    pricing = db.get_pricing()
     branding = db.get_bot_branding()
     verification_setting = db.get_setting('order_verification_message')
     default_verification = "Hi {customer_name}, your order #{order_id} has been confirmed! Total: {total_price}. Thank you!"
@@ -380,7 +379,6 @@ async def settings_page(request: Request, admin: Dict = Depends(verify_admin_cre
         "request": request,
         "admin": admin,
         "menu_groups": menu_groups,
-        "pricing": pricing,
         "branding": branding,
         "verification_message": verification_message
     }
@@ -559,24 +557,43 @@ async def update_verification_message_setting(
 
 @app.put("/api/settings/menu-groups")
 async def update_menu_groups_setting(
-    update: MenuGroupsUpdate,
+    update: Dict[str, Any] = Body(...),
     admin: Dict = Depends(verify_admin_credentials)
 ):
-    """Persist menu option groups"""
+    """Persist menu option groups (first group supports option prices)."""
     db = get_db()
     used_ids = set()
     sanitized_groups = []
 
-    for index, group in enumerate(update.groups):
-        title = group.title.strip()
+    raw_groups = update.get("groups") or []
+    for index, group in enumerate(raw_groups):
+        title = (group.get("title") or "").strip()
         if not title:
             raise HTTPException(status_code=400, detail=f"Group {index + 1} title is required")
 
-        options = [opt.strip() for opt in group.options if opt.strip()]
+        raw_options = group.get("options") or []
+        if index == 0:
+            options = []
+            for opt in raw_options:
+                if isinstance(opt, dict):
+                    name = (opt.get("name") or opt.get("title") or opt.get("label") or "").strip()
+                    try:
+                        price = float(opt.get("price", 0) or 0)
+                    except Exception:
+                        price = 0
+                else:
+                    name = str(opt).strip()
+                    price = 0
+                if not name:
+                    continue
+                options.append({"name": name, "price": price})
+        else:
+            options = [str(opt).strip() for opt in raw_options if str(opt).strip()]
+
         if not options:
             raise HTTPException(status_code=400, detail=f"{title} must include at least one option")
 
-        group_id = group.id or slugify(title, f"group-{index + 1}")
+        group_id = (group.get("id") or "").strip() or slugify(title, f"group-{index + 1}")
         group_id = unique_slug(group_id, used_ids, f"group-{index + 1}")
 
         sanitized_groups.append({
@@ -588,25 +605,6 @@ async def update_menu_groups_setting(
     db.save_menu_groups(sanitized_groups)
     invalidate_menu_cache()
     return {"success": True, "message": "Menu groups updated", "data": sanitized_groups}
-
-
-@app.put("/api/settings/pricing")
-async def update_pricing_setting(
-    update: SettingUpdate,
-    admin: Dict = Depends(verify_admin_credentials)
-):
-    """Update menu pricing"""
-    pricing_value = update.value or {}
-    price_per_bowl = float(pricing_value.get("price_per_bowl", 0))
-    currency = str(pricing_value.get("currency", "")).upper()
-
-    if not currency or len(currency) != 3:
-        raise HTTPException(status_code=400, detail="Currency must be a 3-letter code")
-
-    db = get_db()
-    db.update_setting('pricing', {"price_per_bowl": price_per_bowl, "currency": currency})
-    invalidate_menu_cache()
-    return {"success": True, "message": "Pricing updated", "data": {"price_per_bowl": price_per_bowl, "currency": currency}}
 
 
 @app.put("/api/settings/branding")

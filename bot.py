@@ -79,24 +79,32 @@ def _get_active_deliveries():
 
 async def _send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send menu details sourced from Supabase settings."""
-    # Force refresh so latest pricing/menu is shown immediately
+    # Force refresh so latest menu (with per-option prices) is shown immediately
     menu = get_menu_data(force_refresh=True)
     groups = menu.get("groups", [])
-    pricing = menu.get("pricing", {})
-
-    price = pricing.get("price_per_bowl", 8.0)
-    currency = pricing.get("currency", "SGD")
-
-    message = f"📋 **Our Menu**\n\n💰 Price per bowl: {format_currency(price)} {currency}\n\n"
+    message_lines = ["📋 **Our Menu**", ""]
 
     # Display each menu group dynamically
-    for group in groups:
+    for idx, group in enumerate(groups):
         title = group.get("title", "Options")
         options = group.get("options", [])
         if options:
-            message += f"**{title}**\n" + "\n".join(f"• {option}" for option in options) + "\n\n"
+            if idx == 0:
+                message_lines.append(f"🍧 **{title}** (choose one)")
+            else:
+                message_lines.append(f"✨ **{title}**")
+            for option in options:
+                if isinstance(option, dict):
+                    name = option.get("name") or option.get("title") or option.get("label") or "Option"
+                    if idx == 0 and option.get("price") is not None:
+                        message_lines.append(f"• {name} — ${float(option.get('price')):.2f}")
+                    else:
+                        message_lines.append(f"• {name}")
+                else:
+                    message_lines.append(f"• {option}")
+            message_lines.append("")
 
-    message = message.rstrip()  # Remove trailing whitespace
+    message = "\n".join(message_lines).rstrip()
 
     await update.message.reply_text(
         message,
@@ -151,7 +159,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 **What you can do:**
 • Tap **Order Now** to start a new delivery order
-• Use **Show Menu** to preview flavors, sauces, and pricing
+• Use **Show Menu** to preview flavors, sauces, and prices
 • Check **Show Deliveries** for upcoming sessions
 • Tap **❓ Help** anytime for guidance
 
@@ -197,7 +205,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 We'll process your order right after payment is submitted. 🍧
 
 **Need a refresher?**
-- Use **Show Menu** to see flavors, sauces, and pricing  
+- Use **Show Menu** to see flavors, sauces, and prices  
 - Tap **Show Deliveries** for upcoming sessions and cutoffs
 
 If anything goes wrong, tap **🔄 Restart Order** or **❌ Cancel Order**, or contact the admin team.
