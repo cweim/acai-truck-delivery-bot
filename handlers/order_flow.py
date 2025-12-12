@@ -194,6 +194,19 @@ async def select_delivery(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'handle': supa_user.get('telegram_handle') or update.effective_user.username or '',
             'phone': supa_user.get('phone') or 'Unknown'
         }
+        # Send menu image if available once per order
+        try:
+            if not context.user_data.get('menu_image_sent'):
+                menu_image = db.get_menu_image()
+                if menu_image:
+                    await query.message.reply_photo(
+                        photo=menu_image,
+                        caption="Here’s the menu for your order:",
+                    )
+                context.user_data['menu_image_sent'] = True
+        except Exception as exc:
+            logger.warning(f"Failed to send menu image: {exc}")
+
         result = await start_menu_selection_from_query(query, context)
         return QUANTITY if result == "quantity" else MENU_SELECTION
 
@@ -201,6 +214,17 @@ async def select_delivery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in users:
         logger.info(f"User {user_id} found in local cache")
         context.user_data['user_info'] = users[user_id]
+        try:
+            if not context.user_data.get('menu_image_sent'):
+                menu_image = db.get_menu_image()
+                if menu_image:
+                    await query.message.reply_photo(
+                        photo=menu_image,
+                        caption="Here’s the menu for your order:",
+                    )
+                context.user_data['menu_image_sent'] = True
+        except Exception as exc:
+            logger.warning(f"Failed to send menu image: {exc}")
         result = await start_menu_selection_from_query(query, context)
         return QUANTITY if result == "quantity" else MENU_SELECTION
 
