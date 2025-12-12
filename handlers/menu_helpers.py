@@ -80,6 +80,22 @@ async def prompt_menu_option_via_query(query, context: ContextTypes.DEFAULT_TYPE
     group = groups[index]
     keyboard = build_menu_keyboard(group, index)
 
+    # For first group, if menu image is available and not yet sent, send photo with caption + keyboard
+    menu_image = context.user_data.get('menu_image_url')
+    if index == 0 and menu_image and not context.user_data.get('menu_image_sent'):
+        try:
+            await query.message.reply_photo(
+                photo=menu_image,
+                caption=f"{group.get('title', 'Please select an option')}:",
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+            context.user_data['menu_image_sent'] = True
+            return "menu"
+        except Exception as exc:
+            # fallback to text if photo fails
+            logger.warning(f"Failed to send menu image in menu prompt: {exc}")
+
     await query.edit_message_text(
         f"{group.get('title', 'Please select an option')}:",
         reply_markup=keyboard,
@@ -99,6 +115,20 @@ async def prompt_menu_option_via_message(message, context: ContextTypes.DEFAULT_
 
     group = groups[index]
     keyboard = build_menu_keyboard(group, index)
+
+    menu_image = context.user_data.get('menu_image_url')
+    if index == 0 and menu_image and not context.user_data.get('menu_image_sent'):
+        try:
+            await message.reply_photo(
+                photo=menu_image,
+                caption=f"{group.get('title', 'Please select an option')}:",
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+            context.user_data['menu_image_sent'] = True
+            return "menu"
+        except Exception as exc:
+            logger.warning(f"Failed to send menu image in menu prompt: {exc}")
 
     await message.reply_text(
         f"{group.get('title', 'Please select an option')}:",
