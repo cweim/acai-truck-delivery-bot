@@ -72,6 +72,11 @@ async def prompt_menu_option_via_query(query, context: ContextTypes.DEFAULT_TYPE
     groups = get_menu_groups(context)
     index = context.user_data.get('menu_index', 0)
 
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
     if index >= len(groups):
         accumulate_menu_selections(context)
         await prompt_quantity_via_query(query, context)
