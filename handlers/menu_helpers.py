@@ -101,11 +101,18 @@ async def prompt_menu_option_via_query(query, context: ContextTypes.DEFAULT_TYPE
             # fallback to text if photo fails
             logger.warning(f"Failed to send menu image in menu prompt: {exc}")
 
-    await query.edit_message_text(
-        f"{group.get('title', 'Please select an option')}:",
-        reply_markup=keyboard,
-        parse_mode='Markdown'
-    )
+    if query.message and query.message.photo:
+        await query.message.reply_text(
+            f"{group.get('title', 'Please select an option')}:",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+    else:
+        await query.edit_message_text(
+            f"{group.get('title', 'Please select an option')}:",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
     return "menu"
 
 
@@ -159,11 +166,18 @@ async def prompt_quantity_via_query(query, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton(f"{i} bowl(s)", callback_data=f"qty_{i}")])
     keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel")])
 
-    await query.edit_message_text(
-        "📦 **Select Quantity:**",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
-    )
+    if query.message and query.message.photo:
+        await query.message.reply_text(
+            "📦 **Select Quantity:**",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    else:
+        await query.edit_message_text(
+            "📦 **Select Quantity:**",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     return None
 
 
