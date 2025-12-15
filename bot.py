@@ -228,7 +228,7 @@ We'll process your order right after payment is submitted. 🍧
 - Use **Show Menu** to see flavors, sauces, and prices  
 - Tap **Show Deliveries** for upcoming sessions and cutoffs
 
-If anything goes wrong, tap **🔄 Restart Order** or **❌ Cancel Order**, or contact the admin team.
+If anything goes wrong, tap **🔄 Restart Order** or **❌ Cancel Order**, or contact @TheacaitruckXNUS.
 """
     await update.message.reply_text(
         help_message,
