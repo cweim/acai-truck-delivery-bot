@@ -40,11 +40,16 @@ def format_currency(amount: float) -> str:
 
 
 def parse_datetime(dt_string: str) -> Optional[datetime]:
-    """Parse datetime string in format 'YYYY-MM-DD HH:MM'."""
-    try:
-        return datetime.strptime(dt_string, '%Y-%m-%d %H:%M')
-    except ValueError:
+    """Parse datetime string in ISO or 'YYYY-MM-DD HH:MM' formats."""
+    if not dt_string:
         return None
+    try:
+        return datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
+    except ValueError:
+        try:
+            return datetime.strptime(dt_string, '%Y-%m-%d %H:%M')
+        except ValueError:
+            return None
 
 
 def is_delivery_active(cutoff_time: str) -> bool:
@@ -52,7 +57,16 @@ def is_delivery_active(cutoff_time: str) -> bool:
     cutoff_dt = parse_datetime(cutoff_time)
     if not cutoff_dt:
         return False
-    return datetime.now() < cutoff_dt
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        ZoneInfo = None
+    now = datetime.now(ZoneInfo("Asia/Singapore")) if ZoneInfo else datetime.now()
+    if cutoff_dt.tzinfo is None:
+        return now.replace(tzinfo=None) < cutoff_dt
+    if not now.tzinfo:
+        now = now.replace(tzinfo=cutoff_dt.tzinfo)
+    return now < cutoff_dt
 
 
 def format_order_summary(order_data: Dict[str, Any]) -> str:

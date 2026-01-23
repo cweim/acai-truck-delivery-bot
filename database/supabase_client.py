@@ -329,17 +329,31 @@ class SupabaseDB:
     def get_active_deliveries(self) -> List[Dict]:
         """Get active delivery sessions - only those that are open and before cutoff time"""
         from datetime import datetime
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            ZoneInfo = None
 
         sessions = self.get_delivery_sessions(status='open')
         active = []
+        now = datetime.now(ZoneInfo("Asia/Singapore")) if ZoneInfo else datetime.now()
 
         for session in sessions:
             cutoff_time = session.get('cutoff_time')
             if cutoff_time:
                 try:
-                    cutoff_dt = datetime.fromisoformat(cutoff_time.replace('+00:00', '').replace('Z', ''))
-                    if datetime.now() < cutoff_dt:
+                    cutoff_dt = datetime.fromisoformat(cutoff_time.replace('Z', '+00:00'))
+                    if cutoff_dt.tzinfo is None:
+                        compare_now = now.replace(tzinfo=None)
+                    else:
+                        compare_now = now if now.tzinfo else now.replace(tzinfo=cutoff_dt.tzinfo)
+                    if compare_now < cutoff_dt:
                         active.append(session)
+                    else:
+                        # Auto-close sessions after cutoff so they are no longer orderable.
+                        session_key = session.get('session_id')
+                        if session_key:
+                            self.update_delivery_session_status(session_key, 'closed')
                 except:
                     # If we can't parse, include it as active
                     active.append(session)
@@ -348,6 +362,32 @@ class SupabaseDB:
                 active.append(session)
 
         return active
+
+    def auto_close_cutoff_sessions(self) -> int:
+        """Close open sessions that are past their cutoff time."""
+        from datetime import datetime
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            ZoneInfo = None
+
+        try:
+            now = datetime.now(ZoneInfo("Asia/Singapore")) if ZoneInfo else datetime.now()
+            now_iso = now.replace(tzinfo=None).isoformat()
+            result = (
+                self.client.table('delivery_sessions')
+                .select('session_id')
+                .eq('status', 'open')
+                .lt('cutoff_time', now_iso)
+                .execute()
+            )
+            session_keys = [s.get('session_id') for s in result.data if s.get('session_id')]
+            for session_key in session_keys:
+                self.update_delivery_session_status(session_key, 'closed')
+            return len(session_keys)
+        except Exception as e:
+            print(f"❌ Error auto-closing delivery sessions: {e}")
+            return 0
 
     def get_delivery_by_id(self, delivery_id) -> Optional[Dict]:
         """Get a specific delivery session by ID"""

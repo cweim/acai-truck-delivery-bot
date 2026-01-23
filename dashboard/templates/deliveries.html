@@ -237,10 +237,12 @@ function populateActiveSessions() {
     const sessions = {{ sessions|tojson }};
     const now = new Date();
     const activeSessions = sessions.filter(session => {
-        if (!session.delivery_datetime) return false;
+        if (session.status !== 'open') return false;
+        const cutoffValue = session.cutoff_time || session.delivery_datetime;
+        if (!cutoffValue) return false;
         try {
-            const deliveryTime = new Date(session.delivery_datetime);
-            return deliveryTime >= now;  // Future deliveries = active
+            const cutoffTime = new Date(cutoffValue);
+            return cutoffTime >= now;  // Orderable sessions = active
         } catch {
             return false;
         }
@@ -308,12 +310,14 @@ function populatePastSessions() {
     const sessions = {{ sessions|tojson }};
     const now = new Date();
     const pastSessions = sessions.filter(session => {
-        if (!session.delivery_datetime) return false;
+        if (session.status !== 'open') return true;
+        const cutoffValue = session.cutoff_time || session.delivery_datetime;
+        if (!cutoffValue) return true;
         try {
-            const deliveryTime = new Date(session.delivery_datetime);
-            return deliveryTime < now;
+            const cutoffTime = new Date(cutoffValue);
+            return cutoffTime < now;
         } catch {
-            return false;
+            return true;
         }
     });
 
@@ -348,7 +352,9 @@ function populatePastSessions() {
                 <td>${formatDateTime(session.delivery_datetime)}</td>
                 <td class="font-semibold" style="color: var(--success);">${formatCurrency(session.revenue || 0)}</td>
                 <td>
-                    <span class="badge badge-secondary">${(session.status || 'unknown').toUpperCase()}</span>
+                    <span class="badge ${session.status === 'open' ? 'badge-success' : 'badge-secondary'}">
+                        ${(session.status || 'unknown').toUpperCase()}
+                    </span>
                 </td>
                 <td>
                     <button class="btn-sm btn-danger" onclick="deleteSession('${session.id}')">

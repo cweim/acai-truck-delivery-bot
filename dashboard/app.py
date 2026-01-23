@@ -340,7 +340,8 @@ async def dashboard_home(request: Request, admin: Dict = Depends(verify_admin_cr
 async def delivery_orders_page(request: Request, admin: Dict = Depends(verify_admin_credentials)):
     """Delivery orders page"""
     db = get_db()
-    sessions = db.get_delivery_sessions()
+    db.auto_close_cutoff_sessions()
+    sessions = db.get_delivery_sessions(status='')
     selected_session = None
     for session in sessions:
         if session.get('status') == 'open':
@@ -392,8 +393,10 @@ async def deliveries_page(request: Request, admin: Dict = Depends(verify_admin_c
     """Delivery sessions management page"""
     db = get_db()
 
+    db.auto_close_cutoff_sessions()
+
     # Get all delivery sessions
-    sessions = db.get_delivery_sessions()
+    sessions = db.get_delivery_sessions(status='')
 
     # Add revenue data to each session
     for session in sessions:
@@ -463,7 +466,7 @@ async def analytics_page(request: Request, admin: Dict = Depends(verify_admin_cr
 
     # If location filter is applied, filter delivery orders by location
     if selected_location and selected_location in all_locations:
-        location_sessions = db.get_delivery_sessions()
+        location_sessions = db.get_delivery_sessions(status='')
         # Match sessions by normalized location name
         location_session_ids = {s['id'] for s in location_sessions if normalize_location(s.get('location', '')) == selected_location}
         delivery_orders_filtered = [o for o in delivery_orders_filtered if o.get('delivery_session_id') in location_session_ids]
@@ -999,6 +1002,7 @@ async def get_delivery_sessions(
 ):
     """Get delivery sessions"""
     db = get_db()
+    db.auto_close_cutoff_sessions()
     sessions = db.get_delivery_sessions(status=status)
     return {"success": True, "data": sessions}
 
