@@ -24,12 +24,14 @@ logging.getLogger('telegram.ext.ConversationHandler').setLevel(logging.DEBUG)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from handlers.order_flow import get_order_conversation_handler
 from handlers.payment_handler import get_payment_conversation_handler
+from handlers.profile_handler import get_profile_conversation_handler
 from constants import (
     ORDER_BUTTON_TEXT,
     HELP_BUTTON_TEXT,
     START_OVER_BUTTON_TEXT,
     SHOW_MENU_BUTTON_TEXT,
     SHOW_DELIVERIES_BUTTON_TEXT,
+    CHANGE_NAME_BUTTON_TEXT,
     RESTART_ORDER_BUTTON_TEXT,
     CANCEL_ORDER_BUTTON_TEXT,
     WELCOME_TITLE,
@@ -181,6 +183,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Tap **Order Now** to start a new delivery order
 • Use **Show Menu** to preview flavors, sauces, and prices
 • Check **Show Deliveries** for upcoming sessions
+• Use **Change Name** if you want to update your saved profile name
 • Tap **❓ Help** anytime for guidance
 
 Ready for your treat? Tap **🍧 Order Now** or type `/order`! 🎉
@@ -227,6 +230,7 @@ We'll process your order right after payment is submitted. 🍧
 **Need a refresher?**
 - Use **Show Menu** to see flavors, sauces, and prices  
 - Tap **Show Deliveries** for upcoming sessions and cutoffs
+- Use **Change Name** or `/editname` to update your saved name
 
 If anything goes wrong, tap **🔄 Restart Order** or **❌ Cancel Order**, or contact @TheacaitruckXNUS.
 """
@@ -267,6 +271,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         START_OVER_BUTTON_TEXT,
         SHOW_MENU_BUTTON_TEXT,
         SHOW_DELIVERIES_BUTTON_TEXT,
+        CHANGE_NAME_BUTTON_TEXT,
         RESTART_ORDER_BUTTON_TEXT,
         CANCEL_ORDER_BUTTON_TEXT,
     }
@@ -326,6 +331,10 @@ def main():
     order_handler = get_order_conversation_handler()
     logger.info(f"Order conversation handler created with {len(order_handler.states)} states")
     application.add_handler(order_handler)
+
+    profile_handler = get_profile_conversation_handler()
+    logger.info("Profile conversation handler created")
+    application.add_handler(profile_handler)
 
     # Payment handler integrated into order flow, so we need a separate one for direct /payment command
     payment_handler = get_payment_conversation_handler()
