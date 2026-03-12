@@ -5,6 +5,7 @@ from datetime import datetime, date, time as time_type
 from io import BytesIO
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from utils import normalize_order_discount_rule
 
 load_dotenv()
 
@@ -96,6 +97,39 @@ class SupabaseDB:
             import traceback
             traceback.print_exc()
             return False
+
+    def delete_setting(self, key: str) -> bool:
+        """Delete a setting by key."""
+        try:
+            self.client.table('settings').delete().eq('key', key).execute()
+            return True
+        except Exception as e:
+            print(f"❌ Error deleting setting: {e}")
+            return False
+
+    def _delivery_discount_setting_key(self, session_key: str) -> str:
+        return f"delivery_discount_rule:{session_key}"
+
+    def get_delivery_discount_rule(self, session_key: Optional[str]) -> Dict[str, Any]:
+        """Get the fixed discount rule for a specific delivery session."""
+        if not session_key:
+            return normalize_order_discount_rule(None)
+        return normalize_order_discount_rule(
+            self.get_setting(self._delivery_discount_setting_key(session_key))
+        )
+
+    def save_delivery_discount_rule(self, session_key: str, rule: Dict[str, Any]) -> bool:
+        """Persist the fixed discount rule for a specific delivery session."""
+        if not session_key:
+            return False
+        normalized = normalize_order_discount_rule(rule)
+        return self.update_setting(self._delivery_discount_setting_key(session_key), normalized)
+
+    def delete_delivery_discount_rule(self, session_key: Optional[str]) -> bool:
+        """Delete the fixed discount rule for a delivery session."""
+        if not session_key:
+            return True
+        return self.delete_setting(self._delivery_discount_setting_key(session_key))
 
     def _default_menu_groups(self) -> List[Dict[str, Any]]:
         return [

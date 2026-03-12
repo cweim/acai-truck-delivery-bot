@@ -10,7 +10,7 @@ from telegram.ext import (
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils import calculate_price
+from utils import calculate_price, format_currency
 from database.supabase_client import get_db
 from keyboards import get_main_keyboard
 from constants import RESTART_ORDER_BUTTON_TEXT, CANCEL_ORDER_BUTTON_TEXT
@@ -30,11 +30,21 @@ async def send_payment_qr(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get order details from cart
     total = context.user_data.get('total_price', 0)
     total_quantity = context.user_data.get('total_quantity', 1)
+    subtotal = context.user_data.get('subtotal_price', total)
+    discount_amount = context.user_data.get('discount_amount', 0)
+    discount_rule = context.user_data.get('order_discount_rule') or {}
+
+    pricing_lines = [f"Total Items: {total_quantity}"]
+    if discount_amount:
+        pricing_lines.append(f"Subtotal: {format_currency(subtotal)}")
+        pricing_lines.append(
+            f"Discount ({discount_rule.get('min_bowls', 0)}+ bowls): -{format_currency(discount_amount)}"
+        )
+    pricing_lines.append(f"Total Amount: **{format_currency(total)}**")
 
     message = (
         f"💳 **Payment Required**\n\n"
-        f"Total Items: {total_quantity}\n"
-        f"Total Amount: **${total:.2f}**\n\n"
+        f"{chr(10).join(pricing_lines)}\n\n"
         f"Please:\n"
         f"1️⃣ Scan the QR code below to make payment\n"
         f"2️⃣ Take a screenshot of your payment confirmation\n"

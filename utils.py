@@ -34,6 +34,63 @@ def calculate_price(quantity: int, unit_price: float = 8.0) -> float:
     return quantity * unit_price
 
 
+def get_default_order_discount_rule() -> Dict[str, Any]:
+    """Return the default fixed discount configuration."""
+    return {
+        "enabled": False,
+        "min_bowls": 2,
+        "amount_off": 0.0,
+    }
+
+
+def normalize_order_discount_rule(raw_value: Any) -> Dict[str, Any]:
+    """Normalize discount settings from storage into a predictable shape."""
+    rule = get_default_order_discount_rule()
+    if not isinstance(raw_value, dict):
+        return rule
+
+    try:
+        min_bowls = int(raw_value.get("min_bowls", rule["min_bowls"]) or rule["min_bowls"])
+    except (TypeError, ValueError):
+        min_bowls = rule["min_bowls"]
+
+    try:
+        amount_off = float(raw_value.get("amount_off", rule["amount_off"]) or 0)
+    except (TypeError, ValueError):
+        amount_off = rule["amount_off"]
+
+    rule["enabled"] = bool(raw_value.get("enabled", False))
+    rule["min_bowls"] = max(1, min_bowls)
+    rule["amount_off"] = max(0.0, amount_off)
+    return rule
+
+
+def calculate_order_totals(subtotal: float, total_bowls: int, discount_rule: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Calculate final order totals after applying a fixed discount rule."""
+    normalized_rule = normalize_order_discount_rule(discount_rule)
+    safe_subtotal = max(0.0, float(subtotal or 0))
+    safe_total_bowls = max(0, int(total_bowls or 0))
+
+    discount_applied = (
+        normalized_rule["enabled"]
+        and normalized_rule["amount_off"] > 0
+        and safe_total_bowls >= normalized_rule["min_bowls"]
+        and safe_subtotal > 0
+    )
+    discount_amount = min(safe_subtotal, normalized_rule["amount_off"]) if discount_applied else 0.0
+    total_price = max(0.0, safe_subtotal - discount_amount)
+
+    return {
+        "subtotal": round(safe_subtotal, 2),
+        "discount_amount": round(discount_amount, 2),
+        "total_price": round(total_price, 2),
+        "total_bowls": safe_total_bowls,
+        "discount_applied": discount_applied,
+        "bowls_until_discount": max(normalized_rule["min_bowls"] - safe_total_bowls, 0),
+        "discount_rule": normalized_rule,
+    }
+
+
 def format_currency(amount: float) -> str:
     """Format amount as Singapore dollars."""
     return f"${amount:.2f}"

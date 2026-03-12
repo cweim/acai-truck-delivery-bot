@@ -159,6 +159,9 @@ class DeliverySessionCreate(BaseModel):
     location: str
     delivery_datetime: datetime
     cutoff_time: datetime
+    discount_enabled: bool = False
+    discount_min_bowls: int = 2
+    discount_amount_off: float = 0.0
 
 class SettingUpdate(BaseModel):
     value: Any
@@ -401,6 +404,7 @@ async def deliveries_page(request: Request, admin: Dict = Depends(verify_admin_c
     # Add revenue data to each session
     for session in sessions:
         session['revenue'] = db.get_session_revenue(session['id'])
+        session['discount_rule'] = db.get_delivery_discount_rule(session.get('session_id'))
 
     context = {
         "request": request,
@@ -1198,6 +1202,11 @@ async def create_delivery_session(
     admin: Dict = Depends(verify_admin_credentials)
 ):
     """Create a new delivery session"""
+    if session.discount_min_bowls < 1:
+        raise HTTPException(status_code=400, detail="Minimum bowls must be at least 1")
+    if session.discount_amount_off < 0:
+        raise HTTPException(status_code=400, detail="Discount amount cannot be negative")
+
     db = get_db()
     generated_session_id = f"session-{uuid.uuid4().hex[:8]}"
     success = db.create_delivery_session(
@@ -1208,6 +1217,14 @@ async def create_delivery_session(
     )
 
     if success:
+        db.save_delivery_discount_rule(
+            generated_session_id,
+            {
+                "enabled": session.discount_enabled,
+                "min_bowls": session.discount_min_bowls,
+                "amount_off": session.discount_amount_off,
+            },
+        )
         return {"success": True, "message": "Delivery session created successfully", "session_id": generated_session_id}
     else:
         raise HTTPException(status_code=400, detail="Failed to create delivery session")
@@ -1243,6 +1260,8 @@ async def delete_delivery_session_orders(
 
     if close_session:
         try:
+            session = db.get_delivery_by_id(session_id)
+            db.delete_delivery_discount_rule((session or {}).get('session_id'))
             db.client.table('delivery_sessions').delete().eq('id', session_id).execute()
         except Exception as e:
             print(f"❌ Error deleting delivery session {session_id}: {e}")

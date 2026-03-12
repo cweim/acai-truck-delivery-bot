@@ -81,6 +81,23 @@
                         <input type="datetime-local" class="form-control" id="cutoffTime" required>
                         <small class="text-muted">Last time to accept orders</small>
                     </div>
+                    <div class="border rounded p-3 bg-light">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="discountEnabled">
+                            <label class="form-check-label" for="discountEnabled">Enable discount for this delivery session</label>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Minimum Bowls</label>
+                                <input type="number" class="form-control" id="discountMinBowls" min="1" step="1" value="2">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Discount Amount (SGD)</label>
+                                <input type="number" class="form-control" id="discountAmountOff" min="0" step="0.01" value="2.00">
+                            </div>
+                        </div>
+                        <small class="text-muted d-block mt-2">This discount applies only to this session and counts the full bowl total across all items in one order.</small>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -107,6 +124,9 @@ async function submitCreateDelivery() {
     const locationValue = document.getElementById('location').value;
     const deliveryDatetime = document.getElementById('deliveryDatetime').value;
     const cutoffTime = document.getElementById('cutoffTime').value;
+    const discountEnabled = document.getElementById('discountEnabled').checked;
+    const discountMinBowls = parseInt(document.getElementById('discountMinBowls').value || '2', 10);
+    const discountAmountOff = parseFloat(document.getElementById('discountAmountOff').value || '0');
 
     if (!locationValue || !deliveryDatetime || !cutoffTime) {
         alert('Please fill in all fields');
@@ -122,7 +142,10 @@ async function submitCreateDelivery() {
         body: JSON.stringify({
             location: locationValue,
             delivery_datetime: deliveryDatetime,
-            cutoff_time: cutoffTime
+            cutoff_time: cutoffTime,
+            discount_enabled: discountEnabled,
+            discount_min_bowls: discountMinBowls,
+            discount_amount_off: discountAmountOff
         })
         });
 
@@ -196,6 +219,13 @@ function formatCurrency(value) {
     return '$' + Number(value).toFixed(2);
 }
 
+function formatDiscountRule(rule) {
+    if (!rule || !rule.enabled || Number(rule.amount_off || 0) <= 0) {
+        return '<span class="text-muted">None</span>';
+    }
+    return `${rule.min_bowls}+ bowls: <strong>${formatCurrency(rule.amount_off)} off</strong>`;
+}
+
 // Format all date times on page load
 function formatDateTime(dateTimeStr) {
     if (!dateTimeStr) return '-';
@@ -265,6 +295,7 @@ function populateActiveSessions() {
                         <th>Location</th>
                         <th>Delivery Time</th>
                         <th>Cutoff Time</th>
+                        <th>Discount</th>
                         <th>Revenue</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -285,6 +316,7 @@ function populateActiveSessions() {
                 <td class="font-medium">${session.location}</td>
                 <td>${formatDateTime(session.delivery_datetime)}</td>
                 <td>${formatDateTime(session.cutoff_time)}</td>
+                <td>${formatDiscountRule(session.discount_rule)}</td>
                 <td class="font-semibold" style="color: var(--success);">${formatCurrency(session.revenue || 0)}</td>
                 <td>${statusBadge}</td>
                 <td>
@@ -336,6 +368,7 @@ function populatePastSessions() {
                         <th>Session #</th>
                         <th>Location</th>
                         <th>Delivery Time</th>
+                        <th>Discount</th>
                         <th>Revenue</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -350,6 +383,7 @@ function populatePastSessions() {
                 <td><code>${session.id}</code></td>
                 <td class="font-medium">${session.location}</td>
                 <td>${formatDateTime(session.delivery_datetime)}</td>
+                <td>${formatDiscountRule(session.discount_rule)}</td>
                 <td class="font-semibold" style="color: var(--success);">${formatCurrency(session.revenue || 0)}</td>
                 <td>
                     <span class="badge ${session.status === 'open' ? 'badge-success' : 'badge-secondary'}">

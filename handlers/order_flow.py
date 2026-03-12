@@ -4,7 +4,7 @@ import os
 import re
 import sys
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler,
@@ -16,7 +16,17 @@ logger = logging.getLogger(__name__)
 
 # Add parent directory to path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils import read_json, write_json, is_delivery_active, format_order_summary, generate_delivery_id, calculate_price
+from utils import (
+    read_json,
+    write_json,
+    is_delivery_active,
+    format_order_summary,
+    generate_delivery_id,
+    calculate_price,
+    calculate_order_totals,
+    format_currency,
+    normalize_order_discount_rule,
+)
 from database.supabase_client import get_db
 from handlers.payment_handler import (
     send_payment_qr,
@@ -71,6 +81,73 @@ def _load_active_delivery_sessions() -> List[Dict[str, Any]]:
         ]
         logger.info("Loaded %d active deliveries from JSON fallback", len(fallback))
         return fallback
+
+
+def _load_order_discount_rule(delivery: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Fetch the fixed discount rule for the selected delivery session."""
+    session_key = (delivery or {}).get('session_id')
+    try:
+        db = get_db()
+        return db.get_delivery_discount_rule(session_key)
+    except Exception as exc:
+        logger.warning("Failed to load order discount rule for session %s: %s", session_key, exc)
+        return normalize_order_discount_rule(None)
+
+
+def _recalculate_cart_totals(context: ContextTypes.DEFAULT_TYPE):
+    """Recalculate subtotal, discount, and final total for the current cart."""
+    cart = context.user_data.get('cart', [])
+    subtotal = sum(float(item.get('item_total', 0) or 0) for item in cart)
+    total_quantity = sum(int(item.get('quantity', 0) or 0) for item in cart)
+    totals = calculate_order_totals(
+        subtotal=subtotal,
+        total_bowls=total_quantity,
+        discount_rule=context.user_data.get('order_discount_rule'),
+    )
+
+    context.user_data['subtotal_price'] = totals['subtotal']
+    context.user_data['discount_amount'] = totals['discount_amount']
+    context.user_data['total_price'] = totals['total_price']
+    context.user_data['total_quantity'] = totals['total_bowls']
+    context.user_data['discount_applied'] = totals['discount_applied']
+    context.user_data['bowls_until_discount'] = totals['bowls_until_discount']
+
+
+def _build_pricing_lines(context: ContextTypes.DEFAULT_TYPE, emphasize_total: bool = False) -> List[str]:
+    """Build user-facing pricing lines for cart, summary, and payment prompts."""
+    subtotal = float(context.user_data.get('subtotal_price', context.user_data.get('total_price', 0)) or 0)
+    discount_amount = float(context.user_data.get('discount_amount', 0) or 0)
+    total_price = float(context.user_data.get('total_price', 0) or 0)
+    total_quantity = int(context.user_data.get('total_quantity', 0) or 0)
+    discount_rule = normalize_order_discount_rule(context.user_data.get('order_discount_rule'))
+
+    lines = []
+    if discount_amount > 0:
+        lines.append(f"Subtotal: {format_currency(subtotal)}")
+        lines.append(
+            f"Discount ({discount_rule['min_bowls']}+ bowls): -{format_currency(discount_amount)}"
+        )
+        total_prefix = "**Total:**" if emphasize_total else "Total:"
+        total_suffix = f" **{format_currency(total_price)}**" if emphasize_total else f" {format_currency(total_price)}"
+        lines.append(f"{total_prefix}{total_suffix}")
+        return lines
+
+    total_prefix = "**Total:**" if emphasize_total else "Total:"
+    total_suffix = f" **{format_currency(total_price)}**" if emphasize_total else f" {format_currency(total_price)}"
+    lines.append(f"{total_prefix}{total_suffix}")
+
+    if (
+        discount_rule['enabled']
+        and discount_rule['amount_off'] > 0
+        and total_quantity > 0
+        and total_quantity < discount_rule['min_bowls']
+    ):
+        remaining = discount_rule['min_bowls'] - total_quantity
+        lines.append(
+            f"Add {remaining} more bowl(s) to get {format_currency(discount_rule['amount_off'])} off."
+        )
+
+    return lines
 
 
 async def _maybe_handle_control_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
@@ -180,6 +257,7 @@ async def select_delivery(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Store delivery in context
     context.user_data['delivery'] = selected_delivery
+    context.user_data['order_discount_rule'] = _load_order_discount_rule(selected_delivery)
 
     # Check if user is registered (Supabase first, then local cache)
     user_id = str(update.effective_user.id)
@@ -385,13 +463,7 @@ async def add_item_to_cart(context: ContextTypes.DEFAULT_TYPE, flavor: str, sauc
     }
 
     context.user_data['cart'].append(item)
-
-    # Update total price and quantity
-    total_price = sum(item['item_total'] for item in context.user_data['cart'])
-    total_quantity = sum(item['quantity'] for item in context.user_data['cart'])
-
-    context.user_data['total_price'] = total_price
-    context.user_data['total_quantity'] = total_quantity
+    _recalculate_cart_totals(context)
 
     logger.info(f"Added item to cart: {flavor} x{quantity}. Cart now has {len(context.user_data['cart'])} items")
 
@@ -399,7 +471,6 @@ async def add_item_to_cart(context: ContextTypes.DEFAULT_TYPE, flavor: str, sauc
 async def prompt_add_more_items(query, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show current cart and ask if user wants to add more items"""
     cart = context.user_data.get('cart', [])
-    total_price = context.user_data.get('total_price', 0)
 
     # Build cart summary
     cart_summary = "🛒 **Your Cart:**\n\n"
@@ -410,7 +481,7 @@ async def prompt_add_more_items(query, context: ContextTypes.DEFAULT_TYPE) -> in
         cart_summary += f" × {item['quantity']}"
         cart_summary += f" = ${item['item_total']:.2f}\n"
 
-    cart_summary += f"\n**Total: ${total_price:.2f}**"
+    cart_summary += "\n" + "\n".join(_build_pricing_lines(context, emphasize_total=True))
 
     keyboard = [
         [InlineKeyboardButton("➕ Add More Items", callback_data="add_more")],
@@ -453,7 +524,6 @@ async def handle_add_more_items(update: Update, context: ContextTypes.DEFAULT_TY
 async def show_order_confirmation(query, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Display full cart and confirm order before payment"""
     cart = context.user_data.get('cart', [])
-    total_price = context.user_data.get('total_price', 0)
     delivery = context.user_data.get('delivery', {})
 
     # Build detailed cart summary
@@ -470,7 +540,7 @@ async def show_order_confirmation(query, context: ContextTypes.DEFAULT_TYPE) -> 
         summary += f" = ${item['item_total']:.2f}\n"
 
     summary += f"\n**Total Items:** {context.user_data.get('total_quantity', 0)}\n"
-    summary += f"**Total Price:** ${total_price:.2f}\n\n"
+    summary += "\n".join(_build_pricing_lines(context, emphasize_total=True)) + "\n\n"
     summary += "**Please confirm to proceed to payment:**"
 
     keyboard = [
