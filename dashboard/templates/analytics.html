@@ -36,23 +36,30 @@
 
 <!-- Sales Chart -->
 <div class="card mb-6">
-    <div class="card-header" style="display: flex; align-items: center; justify-content: space-between;">
-        <h3 class="card-title">
-            <i class="bi bi-bar-chart"></i> Daily Sales Trend
-        </h3>
-        <div style="width: 180px;">
-            <label class="form-label small mb-2">View</label>
-            <select class="form-select form-select-sm" id="timeGroupingFilter" onchange="applyTimeGrouping()">
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-            </select>
+    <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3);">
+        <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <h3 class="card-title mb-0">
+                <i class="bi bi-bar-chart"></i> Sales Trend
+            </h3>
+            <!-- View toggle (same pill style as location rank toggle) -->
+            <div class="seg-control" id="viewToggle">
+                <button class="seg-option active" id="viewDaily" onclick="setView('daily')">Daily</button>
+                <button class="seg-option" id="viewWeekly" onclick="setView('weekly')">Weekly</button>
+                <button class="seg-option" id="viewMonthly" onclick="setView('monthly')">Monthly</button>
+            </div>
+        </div>
+        <!-- Period navigation -->
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <button class="btn btn-sm btn-outline-secondary" onclick="navigatePeriod(-1)" style="font-size:1.1rem; line-height:1; padding: 2px 10px;">&#8249;</button>
+            <span id="periodLabel" style="font-size:0.85rem; font-weight:600; min-width:145px; text-align:center;">—</span>
+            <button class="btn btn-sm btn-outline-secondary" id="nextPeriodBtn" onclick="navigatePeriod(1)" style="font-size:1.1rem; line-height:1; padding: 2px 10px;">&#8250;</button>
         </div>
     </div>
-    <div class="card-body" style="overflow-x: auto; position: relative;">
-        <div style="min-width: 100%; width: fit-content; padding-right: 20px;">
-            <canvas id="salesChart" height="80" style="max-width: 2000px;"></canvas>
+    <div class="card-body" style="position: relative; min-height: 120px;">
+        <div id="chartLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(255,255,255,0.7); z-index:10; align-items:center; justify-content:center;">
+            <span class="text-muted" style="font-size:0.85rem;">Loading…</span>
         </div>
+        <canvas id="salesChart" height="80"></canvas>
     </div>
 </div>
 
@@ -144,10 +151,39 @@
 
 <!-- Top Delivery Locations -->
 <div class="card">
-    <div class="card-header">
-        <h3 class="card-title">
+    <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2);">
+        <h3 class="card-title mb-0">
             <i class="bi bi-truck"></i> Top Delivery Locations
         </h3>
+        <div class="seg-control">
+            <button class="seg-option active" id="rankByRevenue" onclick="setLocationRank('revenue')">Revenue</button>
+            <button class="seg-option" id="rankByAvg" onclick="setLocationRank('avg')">Avg Revenue</button>
+        </div>
+        <style>
+            .seg-control {
+                display: flex;
+                background: #e9ecef;
+                border-radius: 999px;
+                padding: 3px;
+            }
+            .seg-option {
+                border: none;
+                background: transparent;
+                border-radius: 999px;
+                padding: 4px 14px;
+                font-size: 0.78rem;
+                font-weight: 500;
+                color: #666;
+                cursor: pointer;
+                transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+                white-space: nowrap;
+            }
+            .seg-option.active {
+                background: #fff;
+                color: #111;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+            }
+        </style>
     </div>
     <div class="card-body">
         <div class="table-responsive">
@@ -159,24 +195,10 @@
                         <th>Sessions</th>
                         <th>Orders</th>
                         <th>Revenue</th>
+                        <th>Avg Revenue</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {% for session in top_delivery_sessions %}
-                    <tr>
-                        <td><span class="badge badge-info">{{ loop.index }}</span></td>
-                        <td>
-                            <div class="font-medium">{{ session.location }}</div>
-                        </td>
-                        <td>{{ session.session_count }}</td>
-                        <td>{{ session.order_count }}</td>
-                        <td class="font-semibold">${{ "%.2f"|format(session.total_revenue) }}</td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="5" class="text-center text-muted">No delivery location data</td>
-                    </tr>
-                    {% endfor %}
+                <tbody id="locationTableBody">
                 </tbody>
             </table>
         </div>
@@ -186,235 +208,202 @@
 
 {% block extra_scripts %}
 <script>
-// Prepare data for chart
-const dailySalesData = {{ daily_sales | tojson }};
-const weeklySalesData = {{ weekly_sales | tojson }};
-const monthlySalesData = {{ monthly_sales | tojson }};
+// Top Delivery Locations — client-side sort toggle
+const locationData = {{ top_delivery_sessions | tojson }};
+locationData.forEach(s => { s.avg_revenue = s.session_count > 0 ? s.total_revenue / s.session_count : 0; });
+let locationRankMode = 'revenue';
 
-let chartInstance = null;
-
-function formatDate(dateStr) {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function setLocationRank(mode) {
+    locationRankMode = mode;
+    document.getElementById('rankByRevenue').classList.toggle('active', mode === 'revenue');
+    document.getElementById('rankByAvg').classList.toggle('active', mode === 'avg');
+    renderLocationTable();
 }
 
-function formatWeekLabel(weekLabel) {
-    return weekLabel || '';
+function renderLocationTable() {
+    const sorted = [...locationData].sort((a, b) =>
+        locationRankMode === 'avg' ? b.avg_revenue - a.avg_revenue : b.total_revenue - a.total_revenue
+    );
+    const tbody = document.getElementById('locationTableBody');
+    if (!sorted.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No delivery location data</td></tr>';
+        return;
+    }
+    tbody.innerHTML = sorted.map((s, i) => `
+        <tr>
+            <td><span class="badge badge-info">${i + 1}</span></td>
+            <td><div class="font-medium">${s.location}</div></td>
+            <td>${s.session_count}</td>
+            <td>${s.order_count}</td>
+            <td class="font-semibold">$${s.total_revenue.toFixed(2)}</td>
+            <td class="font-semibold">$${s.avg_revenue.toFixed(2)}</td>
+        </tr>`).join('');
 }
 
-function formatMonthLabel(monthLabel) {
-    return monthLabel || '';
-}
+renderLocationTable();
 
+// ── Location filter ───────────────────────────────────────────────────────────
 function applyLocationFilter() {
     const location = document.getElementById('locationFilter').value;
-    const timeGrouping = document.getElementById('timeGroupingFilter').value;
     const params = new URLSearchParams();
     if (location) params.append('location', location);
-    if (timeGrouping) params.append('grouping', timeGrouping);
-
-    // Update URL without reloading page
-    const newUrl = '/analytics?' + params.toString();
-    window.history.replaceState({ path: newUrl }, '', newUrl);
-
-    // Note: Location filter requires page reload to fetch new data from backend
-    // We'll reload here since location affects Popular Items, Top Customers, and Daily Sales data
-    window.location.href = newUrl;
+    window.location.href = '/analytics?' + params.toString();
 }
 
-function applyTimeGrouping() {
-    const timeGrouping = document.getElementById('timeGroupingFilter').value;
-    // Only re-render the chart, don't reload the page
-    renderChart(timeGrouping);
+// ── Sales Trend Chart ─────────────────────────────────────────────────────────
+let chartInstance = null;
+let currentView = 'daily';
+let currentPeriod = null;
+
+function getMondayOfWeek(d) {
+    const day = d.getDay(); // 0=Sun
+    const diff = (day === 0 ? -6 : 1 - day);
+    const mon = new Date(d);
+    mon.setDate(d.getDate() + diff);
+    return mon.toISOString().slice(0, 10);
 }
 
-function prepareChartData(grouping) {
-    let data, labelKeyField, labelFormatter;
+function getDefaultPeriod(view) {
+    const now = new Date();
+    if (view === 'daily') return getMondayOfWeek(now);
+    if (view === 'weekly') return now.toISOString().slice(0, 7);
+    return String(now.getFullYear());
+}
 
-    if (grouping === 'daily') {
-        data = dailySalesData;
-        labelKeyField = 'sale_date';
-        labelFormatter = formatDate;
-    } else if (grouping === 'weekly') {
-        data = weeklySalesData;
-        labelKeyField = 'week_label';
-        labelFormatter = formatWeekLabel;
-    } else if (grouping === 'monthly') {
-        data = monthlySalesData;
-        labelKeyField = 'month_label';
-        labelFormatter = formatMonthLabel;
-    } else {
-        data = dailySalesData;
-        labelKeyField = 'sale_date';
-        labelFormatter = formatDate;
+function isCurrentPeriod(view, period) {
+    return period === getDefaultPeriod(view);
+}
+
+function shiftPeriod(view, period, dir) {
+    if (view === 'daily') {
+        const d = new Date(period + 'T00:00:00');
+        d.setDate(d.getDate() + dir * 7);
+        return d.toISOString().slice(0, 10);
     }
+    if (view === 'weekly') {
+        const [y, m] = period.split('-').map(Number);
+        const nd = new Date(y, m - 1 + dir, 1);
+        return `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}`;
+    }
+    // monthly
+    return String(Number(period) + dir);
+}
 
-    // Aggregate data
-    const aggregated = {};
-    data.forEach(item => {
-        const key = item[labelKeyField];
-        if (!aggregated[key]) {
-            aggregated[key] = { orders: 0, revenue: 0, items: 0, label: labelFormatter(key) };
-        }
-        aggregated[key].orders += item.total_orders;
-        aggregated[key].revenue += parseFloat(item.total_revenue);
-        aggregated[key].items += item.total_items;
+function setView(view) {
+    currentView = view;
+    currentPeriod = getDefaultPeriod(view);
+    ['Daily', 'Weekly', 'Monthly'].forEach(v => {
+        document.getElementById('view' + v).classList.toggle('active', v.toLowerCase() === view);
     });
-
-    // Sort keys appropriately
-    let sortedKeys;
-    if (grouping === 'daily') {
-        sortedKeys = Object.keys(aggregated).sort();
-    } else if (grouping === 'weekly') {
-        sortedKeys = Object.keys(aggregated).sort();
-    } else {
-        sortedKeys = Object.keys(aggregated).sort();
-    }
-
-    const orders = sortedKeys.map(k => aggregated[k].orders);
-    const revenue = sortedKeys.map(k => aggregated[k].revenue);
-    const labels = sortedKeys.map(k => aggregated[k].label);
-
-    return { orders, revenue, labels };
+    fetchAndRender();
 }
 
-function renderChart(grouping = 'daily') {
-    const { orders, revenue, labels } = prepareChartData(grouping);
+function navigatePeriod(dir) {
+    const next = shiftPeriod(currentView, currentPeriod, dir);
+    // Don't go past current period
+    if (dir > 0 && isCurrentPeriod(currentView, currentPeriod)) return;
+    currentPeriod = next;
+    fetchAndRender();
+}
+
+async function fetchAndRender() {
+    const overlay = document.getElementById('chartLoadingOverlay');
+    overlay.style.display = 'flex';
+    document.getElementById('nextPeriodBtn').disabled = isCurrentPeriod(currentView, currentPeriod);
+
+    try {
+        const res = await fetch(`/api/analytics/sales-trend?view=${currentView}&period=${currentPeriod}`);
+        const payload = await res.json();
+        if (!payload.success) throw new Error(payload.detail || 'Failed');
+        document.getElementById('periodLabel').textContent = payload.period_label;
+        renderChart(payload.data);
+    } catch (e) {
+        console.error('Sales trend fetch error:', e);
+        document.getElementById('periodLabel').textContent = '—';
+    } finally {
+        overlay.style.display = 'none';
+    }
+}
+
+function renderChart(data) {
+    const labels = data.map(d => d.label);
+    const revenue = data.map(d => d.total_revenue);
+    const orders = data.map(d => d.total_orders);
 
     const ctx = document.getElementById('salesChart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
 
-    // Destroy previous chart if it exists
-    if (chartInstance) {
-        chartInstance.destroy();
-    }
-
-    // Create new chart with brand colors
     chartInstance = new Chart(ctx, {
-    type: 'line',
-    data: {
-        labels: labels,
-        datasets: [
-            {
-                label: 'Revenue ($)',
-                data: revenue,
-                borderColor: '#68217A',
-                backgroundColor: 'rgba(104, 33, 122, 0.1)',
-                yAxisID: 'y',
-                tension: 0.3,
-                borderWidth: 2,
-                pointBackgroundColor: '#68217A',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6
-            },
-            {
-                label: 'Orders',
-                data: orders,
-                borderColor: '#D94370',
-                backgroundColor: 'rgba(217, 67, 112, 0.1)',
-                yAxisID: 'y1',
-                tension: 0.3,
-                borderWidth: 2,
-                pointBackgroundColor: '#D94370',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6
-            }
-        ]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        interaction: {
-            mode: 'index',
-            intersect: false
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Revenue ($)',
+                    data: revenue,
+                    borderColor: '#68217A',
+                    backgroundColor: 'rgba(104, 33, 122, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#68217A',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                },
+                {
+                    label: 'Orders',
+                    data: orders,
+                    borderColor: '#D94370',
+                    backgroundColor: 'rgba(217, 67, 112, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#D94370',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }
+            ]
         },
-        plugins: {
-            legend: {
-                labels: {
-                    font: {
-                        family: 'Poppins, sans-serif',
-                        size: 13
-                    },
-                    padding: 15,
-                    usePointStyle: true
-                }
-            }
-        },
-        scales: {
-            y: {
-                type: 'linear',
-                display: true,
-                position: 'left',
-                title: {
-                    display: true,
-                    text: 'Revenue ($)',
-                    font: {
-                        family: 'Poppins, sans-serif',
-                        size: 12,
-                        weight: '600'
-                    }
-                },
-                grid: {
-                    color: 'rgba(0, 0, 0, 0.05)'
-                },
-                ticks: {
-                    font: {
-                        family: 'Poppins, sans-serif',
-                        size: 11
-                    }
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    labels: { font: { family: 'Poppins, sans-serif', size: 13 }, padding: 15, usePointStyle: true }
                 }
             },
-            y1: {
-                type: 'linear',
-                display: true,
-                position: 'right',
-                title: {
-                    display: true,
-                    text: 'Orders',
-                    font: {
-                        family: 'Poppins, sans-serif',
-                        size: 12,
-                        weight: '600'
-                    }
+            scales: {
+                y: {
+                    type: 'linear', display: true, position: 'left', min: 0,
+                    title: { display: true, text: 'Revenue ($)', font: { family: 'Poppins, sans-serif', size: 12, weight: '600' } },
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    ticks: { font: { family: 'Poppins, sans-serif', size: 11 } }
                 },
-                grid: {
-                    drawOnChartArea: false
+                y1: {
+                    type: 'linear', display: true, position: 'right', min: 0,
+                    title: { display: true, text: 'Orders', font: { family: 'Poppins, sans-serif', size: 12, weight: '600' } },
+                    grid: { drawOnChartArea: false },
+                    ticks: { font: { family: 'Poppins, sans-serif', size: 11 } }
                 },
-                ticks: {
-                    font: {
-                        family: 'Poppins, sans-serif',
-                        size: 11
-                    }
-                }
-            },
-            x: {
-                grid: {
-                    display: false
-                },
-                ticks: {
-                    font: {
-                        family: 'Poppins, sans-serif',
-                        size: 11
-                    }
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { family: 'Poppins, sans-serif', size: 11 } }
                 }
             }
         }
-    }
     });
 }
 
-// Initialize chart on page load
+// Init
 document.addEventListener('DOMContentLoaded', () => {
-    const timeGroupingFilter = document.getElementById('timeGroupingFilter');
-    if (timeGroupingFilter) {
-        const initialGrouping = timeGroupingFilter.value || 'daily';
-        renderChart(initialGrouping);
-    } else {
-        renderChart('daily');
-    }
+    currentView = 'daily';
+    currentPeriod = getDefaultPeriod('daily');
+    fetchAndRender();
 });
 </script>
 {% endblock %}

@@ -278,10 +278,6 @@ async def dashboard_home(request: Request, admin: Dict = Depends(verify_admin_cr
     all_sessions = db.get_delivery_sessions(status='')  # Empty string to get all sessions
     all_locations = sorted(list(set(s.get('location', '') for s in all_sessions if s.get('location', ''))))
 
-    # Existing analytics
-    daily_sales = db.get_daily_sales_summary(start_date, end_date)
-    weekly_sales = db.get_weekly_sales_summary(start_date, end_date)
-    monthly_sales = db.get_monthly_sales_summary(start_date, end_date)
     popular_items = db.get_popular_items(limit=10)
     store_performance = db.get_store_performance()
 
@@ -299,9 +295,7 @@ async def dashboard_home(request: Request, admin: Dict = Depends(verify_admin_cr
     avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
     delivery_count = len(delivery_orders_filtered)
 
-    # NEW ANALYTICS
-    top_customers = db.get_top_customers(start_date, end_date, limit=10)
-    # Global leaderboard (ignore location/date filter for completeness)
+    top_customers = db.get_top_customers(limit=10)  # All-time, no date filter
     top_delivery_sessions = db.get_top_delivery_sessions(limit=10)
     peak_hours = db.get_peak_hours_analysis(start_date, end_date)
     payment_stats = db.get_payment_method_stats(start_date, end_date)
@@ -323,13 +317,7 @@ async def dashboard_home(request: Request, admin: Dict = Depends(verify_admin_cr
         "avg_order_value": avg_order_value,
         "delivery_orders_count": delivery_count,
 
-        # Existing analytics
-        "daily_sales": daily_sales,
-        "weekly_sales": weekly_sales,
-        "monthly_sales": monthly_sales,
         "popular_items": popular_items,
-
-        # New analytics
         "top_customers": top_customers,
         "top_delivery_sessions": top_delivery_sessions,
         "peak_hours": peak_hours,
@@ -440,17 +428,11 @@ async def analytics_page(request: Request, admin: Dict = Depends(verify_admin_cr
 
     # Existing analytics - use location filter if provided
     if selected_location and selected_location in all_locations:
-        daily_sales = db.get_location_daily_sales(selected_location, start_date, end_date)
         popular_items = db.get_location_popular_items(selected_location, start_date, end_date, limit=10)
         top_customers = db.get_location_top_customers(selected_location, start_date, end_date, limit=10)
     else:
-        daily_sales = db.get_daily_sales_summary(start_date, end_date)
         popular_items = db.get_popular_items(limit=10)
-        top_customers = db.get_top_customers(start_date, end_date, limit=10)
-
-    # Get weekly and monthly sales summaries
-    weekly_sales = db.get_weekly_sales_summary(start_date, end_date)
-    monthly_sales = db.get_monthly_sales_summary(start_date, end_date)
+        top_customers = db.get_top_customers(limit=10)  # All-time, no date filter
 
     store_performance = db.get_store_performance()
     # Leaderboard is global (not filtered by location) and not limited by date range
@@ -497,9 +479,6 @@ async def analytics_page(request: Request, admin: Dict = Depends(verify_admin_cr
         "delivery_orders_count": delivery_count,
 
         # Analytics
-        "daily_sales": daily_sales,
-        "weekly_sales": weekly_sales,
-        "monthly_sales": monthly_sales,
         "popular_items": popular_items,
         "store_performance": store_performance,
         "top_customers": top_customers,
@@ -1036,6 +1015,32 @@ async def broadcast_customers_message(
     }
 
 # --- Analytics API ---
+
+@app.get("/api/analytics/sales-trend")
+async def get_sales_trend(
+    view: str = "daily",
+    period: Optional[str] = None,
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Navigable sales trend — daily (week), weekly (month), monthly (year)."""
+    from datetime import datetime as dt, timedelta
+    import calendar
+    db = get_db()
+
+    today = date.today()
+    if not period:
+        if view == 'daily':
+            # Monday of current week
+            monday = today - timedelta(days=today.weekday())
+            period = monday.isoformat()
+        elif view == 'weekly':
+            period = today.strftime('%Y-%m')
+        else:
+            period = str(today.year)
+
+    result = db.get_sales_trend(view, period)
+    return {"success": True, "view": view, "period": period, **result}
+
 
 @app.get("/api/analytics/daily-sales")
 async def get_daily_sales(

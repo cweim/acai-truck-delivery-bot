@@ -126,6 +126,37 @@
     </div>
 </div>
 
+<!-- Reminder Message Card -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title mb-0"><i class="bi bi-bell"></i> Send Reminder Message</h3>
+        <p class="text-muted mb-0 small">Sent automatically 1 hour before delivery. You can also customise and send it manually. Use <code>{customer_name}</code> to personalise each message.</p>
+    </div>
+    <div class="card-body">
+        <div id="reminderSentBadge" class="alert alert-success d-none mb-3" style="font-size:0.85rem;">
+            <i class="bi bi-check-circle"></i> Auto-reminder has already been sent for this session.
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Message</label>
+            <textarea class="form-control" id="reminderMessage" rows="3" placeholder="Hi {customer_name}! 🍧 Your acai order is arriving in about 1 hour. Get ready — see you soon!"></textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Image (optional)</label>
+            <input type="file" class="form-control" id="reminderImageFile" accept="image/png, image/jpeg, image/webp">
+            <small class="text-muted">PNG/JPG/WebP up to 2MB.</small>
+        </div>
+        <div style="display: flex; gap: var(--space-2);">
+            <button class="btn btn-outline-primary" id="reminderSaveBtn" onclick="saveReminderConfig()">
+                <i class="bi bi-floppy"></i> Save Config
+            </button>
+            <button class="btn-primary" id="reminderSendBtn" onclick="sendReminderNow()">
+                <i class="bi bi-send"></i> Send Now
+            </button>
+        </div>
+        <div id="reminderStatus" class="mt-2 text-muted small"></div>
+    </div>
+</div>
+
 <!-- Receipt Preview Modal -->
 <div class="modal fade" id="receiptPreviewModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -525,6 +556,7 @@ if (deliverySessionSelect) {
         }
 
         loadDeliveryOrders(currentSessionId);
+        loadReminderConfig(currentSessionId);
     });
 }
 
@@ -551,9 +583,91 @@ if (currentSessionId) {
     deliveryExportKitchenBtn?.setAttribute('disabled', 'disabled');
 }
 
+// --- Reminder ---
+const DEFAULT_REMINDER_MSG = "Hi {customer_name}! 🍧 Your acai order is arriving in about 1 hour. Get ready — see you soon!";
+
+async function loadReminderConfig(sessionId) {
+    if (!sessionId) return;
+    document.getElementById('reminderMessage').value = DEFAULT_REMINDER_MSG;
+    document.getElementById('reminderImageFile').value = '';
+    document.getElementById('reminderSentBadge').classList.add('d-none');
+    document.getElementById('reminderStatus').textContent = '';
+    try {
+        const res = await fetch(`/api/deliveries/${sessionId}/reminder-config`);
+        const data = await res.json();
+        if (data.config && data.config.message) {
+            document.getElementById('reminderMessage').value = data.config.message;
+        }
+        if (data.reminder_sent) {
+            document.getElementById('reminderSentBadge').classList.remove('d-none');
+        }
+    } catch (e) { /* use defaults */ }
+}
+
+async function saveReminderConfig() {
+    if (!currentSessionId) { showToast('Select a delivery session first', 'warning'); return; }
+    const message = (document.getElementById('reminderMessage').value || '').trim();
+    const imageFile = document.getElementById('reminderImageFile')?.files?.[0];
+    if (!message) { showToast('Message cannot be empty', 'danger'); return; }
+
+    const formData = new FormData();
+    formData.append('message', message);
+    if (imageFile) formData.append('image', imageFile);
+
+    const btn = document.getElementById('reminderSaveBtn');
+    if (btn) { btn.disabled = true; showLoading(btn); }
+    try {
+        const res = await fetch(`/api/deliveries/${currentSessionId}/reminder-config`, { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Reminder config saved!', 'success');
+        } else {
+            showToast('Failed to save: ' + (data.detail || 'Unknown error'), 'danger');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'danger');
+    } finally {
+        if (btn) { hideLoading(btn); btn.disabled = false; }
+    }
+}
+
+async function sendReminderNow() {
+    if (!currentSessionId) { showToast('Select a delivery session first', 'warning'); return; }
+    if (!confirm('Send the reminder to all customers in this session right now?')) return;
+
+    await saveReminderConfig();
+
+    const btn = document.getElementById('reminderSendBtn');
+    const status = document.getElementById('reminderStatus');
+    if (btn) { btn.disabled = true; showLoading(btn); }
+    if (status) status.textContent = 'Sending...';
+    try {
+        const res = await fetch(`/api/deliveries/${currentSessionId}/send-reminder`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            if (status) status.textContent = `Sent to ${data.sent}/${data.total} customers`;
+            showToast(`Reminder sent to ${data.sent}/${data.total} customers`, 'success');
+            document.getElementById('reminderSentBadge').classList.remove('d-none');
+        } else {
+            if (status) status.textContent = 'Send failed';
+            showToast('Failed to send: ' + (data.detail || 'Unknown error'), 'danger');
+        }
+    } catch (e) {
+        if (status) status.textContent = 'Send failed';
+        showToast('Error: ' + e.message, 'danger');
+    } finally {
+        if (btn) { hideLoading(btn); btn.disabled = false; }
+    }
+}
+
+// Load reminder config on page load and session change
+if (currentSessionId) loadReminderConfig(currentSessionId);
+
 window.toggleVerification = toggleVerification;
 window.showReceiptPreview = showReceiptPreview;
 window.deleteDeliveryOrder = deleteDeliveryOrder;
 window.sendBroadcast = sendBroadcast;
+window.saveReminderConfig = saveReminderConfig;
+window.sendReminderNow = sendReminderNow;
 </script>
 {% endblock %}

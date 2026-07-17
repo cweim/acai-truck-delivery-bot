@@ -378,7 +378,7 @@ class SupabaseDB:
             query = self.client.table('delivery_sessions').select('*')
             if status:  # Empty string means fetch all, non-empty means filter by status
                 query = query.eq('status', status)
-            response = query.order('delivery_datetime').execute()
+            response = query.order('delivery_datetime', desc=True).execute()
             return response.data
         except Exception as e:
             print(f"❌ Error getting delivery sessions: {e}")
@@ -1034,6 +1034,111 @@ class SupabaseDB:
             traceback.print_exc()
             return []
 
+    def get_sales_trend(self, view: str, period: str) -> Dict:
+        """
+        Return aggregated sales data for a specific period window.
+        view: 'daily' | 'weekly' | 'monthly'
+        period:
+          daily   → 'YYYY-MM-DD' (Monday of the target week)
+          weekly  → 'YYYY-MM'
+          monthly → 'YYYY'
+        """
+        from datetime import datetime as dt, timedelta
+        from collections import defaultdict
+        import calendar
+
+        try:
+            # ── Compute date range ─────────────────────────────────────────
+            if view == 'daily':
+                week_start = dt.fromisoformat(period).date()
+                start_date = week_start
+                end_date = week_start + timedelta(days=6)
+            elif view == 'weekly':
+                year, month = int(period[:4]), int(period[5:7])
+                start_date = dt(year, month, 1).date()
+                last_day = calendar.monthrange(year, month)[1]
+                end_date = dt(year, month, last_day).date()
+            else:  # monthly
+                year = int(period)
+                start_date = dt(year, 1, 1).date()
+                end_date = dt(year, 12, 31).date()
+
+            # ── Fetch orders in range ──────────────────────────────────────
+            def _fetch(table):
+                return self.client.table(table).select(
+                    'created_at, total_price, quantity, order_status'
+                ).gte('created_at', start_date.isoformat()).lte('created_at', end_date.isoformat()).execute().data or []
+
+            rows = [o for o in _fetch('delivery_orders') + _fetch('pickup_orders')
+                    if o.get('order_status') != 'cancelled']
+
+            # ── Aggregate ──────────────────────────────────────────────────
+            if view == 'daily':
+                buckets = {}
+                for i in range(7):
+                    d = start_date + timedelta(days=i)
+                    key = d.isoformat()
+                    buckets[key] = {'label': d.strftime('%a %b %-d'), 'total_orders': 0, 'total_revenue': 0.0}
+                for o in rows:
+                    key = o['created_at'].split('T')[0]
+                    if key in buckets:
+                        buckets[key]['total_orders'] += 1
+                        buckets[key]['total_revenue'] += float(o.get('total_price', 0))
+                data = [buckets[k] for k in sorted(buckets)]
+                end = start_date + timedelta(days=6)
+                period_label = f"{start_date.strftime('%b %-d')}–{end.strftime('%-d, %Y')}"
+
+            elif view == 'weekly':
+                year, month = int(period[:4]), int(period[5:7])
+                last_day = calendar.monthrange(year, month)[1]
+                # Build fixed 7-day blocks starting from day 1
+                blocks = []
+                day = 1
+                week_num = 1
+                while day <= last_day:
+                    block_end = min(day + 6, last_day)
+                    blocks.append({
+                        'start': dt(year, month, day).date(),
+                        'end': dt(year, month, block_end).date(),
+                        'label': f"Week {week_num}\n({dt(year, month, day).strftime('%b %-d')}–{dt(year, month, block_end).strftime('%-d')})",
+                        'total_orders': 0,
+                        'total_revenue': 0.0,
+                    })
+                    day += 7
+                    week_num += 1
+                for o in rows:
+                    d = dt.fromisoformat(o['created_at'].split('T')[0]).date()
+                    for b in blocks:
+                        if b['start'] <= d <= b['end']:
+                            b['total_orders'] += 1
+                            b['total_revenue'] += float(o.get('total_price', 0))
+                            break
+                data = [{'label': b['label'], 'total_orders': b['total_orders'], 'total_revenue': b['total_revenue']} for b in blocks]
+                month_name = dt(year, month, 1).strftime('%B %Y')
+                period_label = month_name
+
+            else:  # monthly
+                year = int(period)
+                month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                buckets = {f"{year}-{m:02d}": {'label': month_names[m - 1], 'total_orders': 0, 'total_revenue': 0.0}
+                           for m in range(1, 13)}
+                for o in rows:
+                    key = o['created_at'][:7]
+                    if key in buckets:
+                        buckets[key]['total_orders'] += 1
+                        buckets[key]['total_revenue'] += float(o.get('total_price', 0))
+                data = [buckets[k] for k in sorted(buckets)]
+                period_label = str(year)
+
+            return {'period_label': period_label, 'data': data}
+
+        except Exception as e:
+            print(f"❌ Error in get_sales_trend: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'period_label': period, 'data': []}
+
     def get_popular_items(self, limit: int = 10) -> List[Dict]:
         """Get popular items"""
         try:
@@ -1085,19 +1190,29 @@ class SupabaseDB:
             print(f"❌ Error getting store performance: {e}")
             return []
 
-    def get_top_customers(self, start_date: date, end_date: date, limit: int = 10) -> List[Dict]:
-        """Get top customers by order count and revenue for date range"""
+    def get_top_customers(self, start_date: Optional[date] = None, end_date: Optional[date] = None, limit: int = 10) -> List[Dict]:
+        """Get top customers by order count and revenue. If no date range given, returns all-time."""
         try:
             # Aggregate from both delivery and pickup orders
             from collections import defaultdict
 
-            delivery_orders = self.client.table('delivery_orders').select(
+            dq = self.client.table('delivery_orders').select(
                 'customer_name, customer_phone, customer_handle, total_price, quantity'
-            ).gte('created_at', start_date.isoformat()).lte('created_at', end_date.isoformat()).neq('order_status', 'cancelled').execute()
+            ).neq('order_status', 'cancelled')
+            if start_date:
+                dq = dq.gte('created_at', start_date.isoformat())
+            if end_date:
+                dq = dq.lte('created_at', end_date.isoformat())
+            delivery_orders = dq.execute()
 
-            pickup_orders = self.client.table('pickup_orders').select(
+            pq = self.client.table('pickup_orders').select(
                 'customer_name, customer_phone, customer_handle, total_price, quantity'
-            ).gte('created_at', start_date.isoformat()).lte('created_at', end_date.isoformat()).neq('order_status', 'cancelled').execute()
+            ).neq('order_status', 'cancelled')
+            if start_date:
+                pq = pq.gte('created_at', start_date.isoformat())
+            if end_date:
+                pq = pq.lte('created_at', end_date.isoformat())
+            pickup_orders = pq.execute()
 
             customer_stats = defaultdict(lambda: {'order_count': 0, 'total_revenue': 0.0, 'total_items': 0})
 

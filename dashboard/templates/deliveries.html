@@ -56,47 +56,6 @@
     </div>
 </div>
 
-<!-- Reminder Modal -->
-<div class="modal fade" id="reminderModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-bell"></i> 1-Hour Delivery Reminder</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div id="reminderSentBadge" class="alert alert-success d-none" style="font-size:0.85rem;">
-                    <i class="bi bi-check-circle"></i> Auto-reminder has already been sent for this session.
-                </div>
-                <p class="text-muted" style="font-size:0.875rem;">
-                    Sent automatically 1 hour before delivery. Use <code>{customer_name}</code> to personalise each message. You can also send it manually.
-                </p>
-                <form id="reminderForm">
-                    <input type="hidden" id="reminderSessionId">
-                    <div class="mb-3">
-                        <label class="form-label">Reminder Message</label>
-                        <textarea class="form-control" id="reminderMessage" rows="4" placeholder="Hi {customer_name}! 🍧 Your acai order is arriving in about 1 hour. Get ready — see you soon!"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Optional Image</label>
-                        <input class="form-control" type="file" id="reminderImageFile" accept="image/png,image/jpeg,image/webp,image/gif">
-                        <div class="form-text">PNG/JPG/WebP/GIF up to 2MB.</div>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer" style="gap: var(--space-2);">
-                <button type="button" class="btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-outline-primary" onclick="saveReminderConfig()">
-                    <i class="bi bi-floppy"></i> Save Config
-                </button>
-                <button type="button" class="btn-primary" onclick="sendReminderNow()">
-                    <i class="bi bi-send"></i> Send Now
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Create Delivery Modal -->
 <div class="modal fade" id="createDeliveryModal" tabindex="-1">
     <div class="modal-dialog">
@@ -298,76 +257,6 @@ function formatDateTime(dateTimeStr) {
     }
 }
 
-const DEFAULT_REMINDER_MSG = "Hi {customer_name}! 🍧 Your acai order is arriving in about 1 hour. Get ready — see you soon!";
-
-async function openReminderModal(sessionId) {
-    document.getElementById('reminderSessionId').value = sessionId;
-    document.getElementById('reminderMessage').value = DEFAULT_REMINDER_MSG;
-    document.getElementById('reminderImageFile').value = '';
-    document.getElementById('reminderSentBadge').classList.add('d-none');
-
-    try {
-        const res = await fetch(`/api/deliveries/${sessionId}/reminder-config`);
-        const data = await res.json();
-        if (data.config && data.config.message) {
-            document.getElementById('reminderMessage').value = data.config.message;
-        }
-        if (data.reminder_sent) {
-            document.getElementById('reminderSentBadge').classList.remove('d-none');
-        }
-    } catch (e) { /* use defaults */ }
-
-    new bootstrap.Modal(document.getElementById('reminderModal')).show();
-}
-
-async function saveReminderConfig() {
-    const sessionId = document.getElementById('reminderSessionId').value;
-    const message = document.getElementById('reminderMessage').value.trim();
-    const imageFile = document.getElementById('reminderImageFile').files[0];
-
-    if (!message) { alert('Message cannot be empty.'); return; }
-
-    const formData = new FormData();
-    formData.append('message', message);
-    if (imageFile) formData.append('image', imageFile);
-
-    try {
-        const res = await fetch(`/api/deliveries/${sessionId}/reminder-config`, {
-            method: 'POST', body: formData
-        });
-        const data = await res.json();
-        if (data.success) {
-            alert('Reminder config saved!');
-        } else {
-            alert('Failed to save: ' + (data.detail || 'Unknown error'));
-        }
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-}
-
-async function sendReminderNow() {
-    const sessionId = document.getElementById('reminderSessionId').value;
-    if (!confirm('Send the reminder to all customers in this session right now?')) return;
-
-    // Save config first so the manual send uses the current message/image
-    await saveReminderConfig();
-
-    try {
-        const res = await fetch(`/api/deliveries/${sessionId}/send-reminder`, { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-            alert(`✅ Reminder sent to ${data.sent}/${data.total} customers.`);
-            bootstrap.Modal.getInstance(document.getElementById('reminderModal'))?.hide();
-            window.location.reload();
-        } else {
-            alert('Failed to send: ' + (data.detail || 'Unknown error'));
-        }
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     // Populate active and past sessions
     populateActiveSessions();
@@ -433,7 +322,6 @@ function populateActiveSessions() {
                 <td>
                     <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
                         ${session.status === 'open' ? `<button class="btn-sm btn-warning" onclick="cutoffSession('${session.session_id}')"><i class="bi bi-slash-circle"></i> Cut Off</button>` : ''}
-                        <button class="btn-sm btn-info" onclick="openReminderModal(${session.id})"><i class="bi bi-bell"></i> Reminder</button>
                         <button class="btn-sm btn-danger" onclick="deleteSession('${session.id}')"><i class="bi bi-trash"></i> Delete</button>
                     </div>
                 </td>
@@ -463,7 +351,7 @@ function populatePastSessions() {
         } catch {
             return true;
         }
-    });
+    }).sort((a, b) => new Date(b.delivery_datetime) - new Date(a.delivery_datetime));
 
     const container = document.getElementById('pastSessionsContainer');
 
