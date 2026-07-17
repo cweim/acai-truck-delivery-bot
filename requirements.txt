@@ -1,5 +1,5 @@
 # Telegram Bot
-python-telegram-bot==21.4
+python-telegram-bot[job-queue]==21.4
 python-dotenv
 
 # Supabase Database - version without strict httpx pin

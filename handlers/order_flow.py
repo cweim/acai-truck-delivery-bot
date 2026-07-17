@@ -31,7 +31,9 @@ from database.supabase_client import get_db
 from handlers.payment_handler import (
     send_payment_qr,
     receive_payment_screenshot,
+    confirm_screenshot_callback,
     cancel_payment,
+    CONFIRM_SCREENSHOT,
 )
 from keyboards import get_order_keyboard, get_main_keyboard
 from constants import ORDER_BUTTON_TEXT, RESTART_ORDER_BUTTON_TEXT, CANCEL_ORDER_BUTTON_TEXT
@@ -577,6 +579,9 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+    # Tell confirm_screenshot_callback which state to return to on re-upload
+    context.user_data['payment_retry_state'] = PAYMENT
+
     # Trigger payment handler
     await send_payment_qr(update, context)
 
@@ -634,6 +639,9 @@ def get_order_conversation_handler():
             PAYMENT: [
                 MessageHandler(filters.PHOTO, receive_payment_screenshot),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, request_payment_screenshot),
+            ],
+            CONFIRM_SCREENSHOT: [
+                CallbackQueryHandler(confirm_screenshot_callback, pattern="^(yes_receipt|retry_receipt)$"),
             ],
         },
         fallbacks=[CommandHandler('cancel', cancel_order)],

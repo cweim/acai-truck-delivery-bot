@@ -56,3 +56,6 @@ Thumbs.db
 # Deployment guide (local reference only)
 DEPLOYMENT.md
 Tech_Stack.md
+
+# Graphify knowledge graph outputs
+graphify-out/

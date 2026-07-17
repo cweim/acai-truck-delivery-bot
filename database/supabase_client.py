@@ -131,6 +131,30 @@ class SupabaseDB:
             return True
         return self.delete_setting(self._delivery_discount_setting_key(session_key))
 
+    # ==================== DELIVERY REMINDERS ====================
+
+    def get_reminder_config(self, session_id: int) -> Dict[str, Any]:
+        """Get the reminder message config for a specific delivery session."""
+        result = self.get_setting(f"reminder_config:{session_id}")
+        if isinstance(result, dict):
+            return result
+        return {}
+
+    def save_reminder_config(self, session_id: int, message: str, image_url: Optional[str] = None) -> bool:
+        """Persist the reminder message config for a specific delivery session."""
+        return self.update_setting(f"reminder_config:{session_id}", {
+            "message": message,
+            "image_url": image_url,
+        })
+
+    def get_reminder_sent(self, session_id: int) -> bool:
+        """Return True if the 1-hour reminder has already been sent for this session."""
+        return bool(self.get_setting(f"reminder_sent:{session_id}"))
+
+    def mark_reminder_sent(self, session_id: int) -> bool:
+        """Record that the 1-hour reminder has been sent for this session."""
+        return self.update_setting(f"reminder_sent:{session_id}", True)
+
     def _default_menu_groups(self) -> List[Dict[str, Any]]:
         return [
             {

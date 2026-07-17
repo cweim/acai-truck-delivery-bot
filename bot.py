@@ -25,6 +25,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from handlers.order_flow import get_order_conversation_handler
 from handlers.payment_handler import get_payment_conversation_handler
 from handlers.profile_handler import get_profile_conversation_handler
+from handlers.reminder import send_delivery_reminders
 from constants import (
     ORDER_BUTTON_TEXT,
     HELP_BUTTON_TEXT,
@@ -183,7 +184,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Tap **Order Now** to start a new delivery order
 • Use **Show Menu** to preview flavors, sauces, and prices
 • Check **Show Deliveries** for upcoming sessions
-• Use **Change Name** if you want to update your saved profile name
+• Use **Change Name/Number** to update your saved name or phone number
 • Tap **❓ Help** anytime for guidance
 
 Ready for your treat? Tap **🍧 Order Now** or type `/order`! 🎉
@@ -230,7 +231,7 @@ We'll process your order right after payment is submitted. 🍧
 **Need a refresher?**
 - Use **Show Menu** to see flavors, sauces, and prices  
 - Tap **Show Deliveries** for upcoming sessions and cutoffs
-- Use **Change Name** or `/editname` to update your saved name
+- Use **Change Name/Number** to update your saved name (`/editname`) or phone (`/editphone`)
 
 If anything goes wrong, tap **🔄 Restart Order** or **❌ Cancel Order**, or contact @TheacaitruckXNUS.
 """
@@ -354,6 +355,10 @@ def main():
 
     # Add error handler
     application.add_error_handler(error_handler)
+
+    # Schedule delivery reminders — checks every 5 minutes, fires when session is ~1hr away
+    application.job_queue.run_repeating(send_delivery_reminders, interval=300, first=10)
+    logger.info("Delivery reminder job scheduled (every 5 minutes)")
 
     # Start bot
     print("✅ Bot is running! Press Ctrl+C to stop.")

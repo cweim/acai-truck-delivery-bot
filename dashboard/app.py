@@ -906,6 +906,84 @@ async def broadcast_delivery_message(
     }
 
 
+@app.get("/api/deliveries/{session_id}/reminder-config")
+async def get_reminder_config(
+    session_id: int,
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Return the saved reminder config for a delivery session."""
+    db = get_db()
+    config = db.get_reminder_config(session_id)
+    reminder_sent = db.get_reminder_sent(session_id)
+    return {"success": True, "config": config, "reminder_sent": reminder_sent}
+
+
+@app.post("/api/deliveries/{session_id}/reminder-config")
+async def save_reminder_config(
+    session_id: int,
+    message: str = Form(...),
+    image: UploadFile = File(None),
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Save a custom reminder message (and optional image) for a delivery session."""
+    message = message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    db = get_db()
+    image_url = None
+
+    if image and image.filename:
+        extension = os.path.splitext(image.filename or "")[1].lower()
+        if extension not in BRANDING_IMAGE_ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="Unsupported file type. Use PNG, JPG, JPEG, GIF, or WebP.")
+        contents = await image.read()
+        if len(contents) > BRANDING_IMAGE_MAX_BYTES:
+            raise HTTPException(status_code=400, detail="Image must be 2MB or smaller")
+        object_name = f"broadcast/{uuid.uuid4().hex}{extension}"
+        uploaded_url = db.upload_branding_image(object_name, contents, image.content_type)
+        if not uploaded_url:
+            raise HTTPException(status_code=500, detail="Failed to upload image")
+        image_url = uploaded_url
+
+    db.save_reminder_config(session_id, message, image_url)
+    return {"success": True, "message": "Reminder config saved"}
+
+
+@app.post("/api/deliveries/{session_id}/send-reminder")
+async def send_reminder_now(
+    session_id: int,
+    admin: Dict = Depends(verify_admin_credentials)
+):
+    """Manually send the reminder to all customers in a delivery session right now."""
+    from handlers.reminder import DEFAULT_REMINDER_MESSAGE
+
+    db = get_db()
+    users = db.get_delivery_session_users(session_id)
+    if not users:
+        raise HTTPException(status_code=404, detail="No customers found for this session")
+
+    config = db.get_reminder_config(session_id)
+    message_template = config.get("message") or DEFAULT_REMINDER_MESSAGE
+    image_url = config.get("image_url") or None
+
+    results = []
+    for user in users:
+        telegram_id = user.get("telegram_user_id")
+        if not telegram_id:
+            results.append({"telegram_user_id": None, "success": False, "error": "Missing telegram user id"})
+            continue
+        customer_name = user.get("name") or user.get("telegram_handle") or "Customer"
+        personalized = message_template.replace("{customer_name}", customer_name)
+        success, error = await send_broadcast_message(telegram_id, personalized, image_url)
+        results.append({"telegram_user_id": telegram_id, "success": success, "error": error})
+
+    db.mark_reminder_sent(session_id)
+    sent = sum(1 for r in results if r["success"])
+    failed = [r for r in results if not r["success"]]
+    return {"success": True, "sent": sent, "failed": failed, "total": len(results)}
+
+
 @app.post("/api/customers/broadcast")
 async def broadcast_customers_message(
     message: str = Form(...),
