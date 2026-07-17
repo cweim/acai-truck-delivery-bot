@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap');
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: #1a0a2e;
+        color: #fff;
+        font-family: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+      }
+
+      .clip { position: absolute; opacity: 0; pointer-events: none; }
+
+      /* ── Dark bg layer ── */
+      #dark-bg { inset: 0; position: absolute; background: #1a0a2e; }
+
+      /* ── Light bg (scene 3) — clip wrapper, inner div holds bg ── */
+      #light-bg { inset: 0; position: absolute; }
+      #light-bg-inner { position: absolute; inset: 0; background: #f3f0f8; opacity: 0; }
+
+      /* ── SCENE 1: Hook ── */
+      #hook-emoji {
+        top: 170px; left: 0; width: 1280px;
+        font-size: 100px; text-align: center; line-height: 1;
+      }
+      #hook-line1 {
+        top: 285px; left: 0; width: 1280px;
+        font-size: 72px; font-weight: 900; color: #fff;
+        text-align: center; letter-spacing: -1px;
+      }
+      #hook-line2 {
+        top: 388px; left: 0; width: 1280px;
+        font-size: 50px; font-weight: 700; color: #D94370;
+        text-align: center; letter-spacing: -0.5px;
+      }
+
+      /* ── SCENE 2: Feature Cards ── */
+      #scene2-label {
+        top: 80px; left: 0; width: 1280px;
+        font-size: 16px; font-weight: 600;
+        color: rgba(255,255,255,0.52); text-align: center;
+        letter-spacing: 3px; text-transform: uppercase;
+      }
+      .feat-card {
+        position: absolute; opacity: 0;
+        width: 340px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 20px; padding: 34px 28px; top: 200px;
+      }
+      #card1 { left: 70px; }
+      #card2 { left: 470px; }
+      #card3 { left: 870px; }
+      .feat-icon { font-size: 42px; margin-bottom: 14px; }
+      .feat-title { font-size: 19px; font-weight: 700; color: #fff; margin-bottom: 10px; line-height: 1.3; }
+      .feat-desc { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.6; }
+      .feat-accent {
+        display: inline-block; margin-top: 16px; padding: 5px 14px;
+        border-radius: 999px; font-size: 11px; font-weight: 600;
+        background: rgba(217,67,112,0.18); color: rgb(226,113,147);
+        border: 1px solid rgba(217,67,112,0.3);
+      }
+
+      /* ── SCENE 3: Dashboard ── */
+      /* clip wrapper: just position + size */
+      #dashboard-mock {
+        position: absolute;
+        top: 40px; left: 50px; width: 1180px; height: 640px;
+      }
+      /* inner non-clip div holds all visual styling */
+      #dashboard-inner {
+        position: absolute; inset: 0;
+        background: #fff; border-radius: 16px;
+        box-shadow: 0 8px 48px rgba(104,33,122,0.18);
+        overflow: hidden;
+      }
+      #dash-header {
+        height: 52px; background: #68217A;
+        display: flex; align-items: center; padding: 0 22px; gap: 8px;
+      }
+      #dash-header span { color: #fff; font-weight: 700; font-size: 15px; }
+      #dash-header .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.35); }
+      #dash-body { display: flex; height: calc(100% - 52px); }
+      #dash-sidebar { width: 170px; background: #faf8fc; border-right: 1px solid #ede9f2; padding: 18px 0; }
+      .dash-nav-item { padding: 9px 18px; font-size: 12px; color: #888; font-weight: 500; }
+      .dash-nav-item.active { color: #68217A; font-weight: 700; background: rgba(104,33,122,0.07); border-right: 3px solid #68217A; }
+      #dash-main { flex: 1; padding: 22px; overflow: hidden; }
+      .dash-stats { display: flex; gap: 14px; margin-bottom: 18px; }
+      .stat-card { flex: 1; background: #faf8fc; border-radius: 12px; padding: 14px 18px; border: 1px solid #ede9f2; }
+      .stat-label { font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+      .stat-value { font-size: 26px; font-weight: 800; color: #1a0a2e; margin-top: 3px; }
+      .stat-value.accent { color: #68217A; }
+      #dash-orders-title { font-size: 13px; font-weight: 700; color: #333; margin-bottom: 10px; }
+      .order-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 9px 0; border-bottom: 1px solid #f0edf5; font-size: 12px;
+      }
+      .order-row:last-child { border-bottom: none; }
+      .order-badge { padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 600; }
+      .badge-verified { background: #e6faf0; color: #1a9e5c; }
+      .badge-pending { background: #fff3e0; color: #e67e22; }
+      .customer-name { font-weight: 600; color: #222; min-width: 100px; }
+      .order-detail { color: #888; flex: 1; }
+      .order-price { font-weight: 700; color: #68217A; }
+
+      /* ── SCENE 4: Outro ── */
+      #outro-bar {
+        position: absolute; top: 0; left: 0; right: 0; height: 5px;
+        background: linear-gradient(90deg, #68217A, #D94370);
+      }
+      #outro-emoji {
+        top: 200px; left: 0; width: 1280px;
+        font-size: 78px; text-align: center;
+      }
+      #outro-tagline {
+        top: 318px; left: 0; width: 1280px;
+        font-size: 56px; font-weight: 900; color: #fff;
+        text-align: center; letter-spacing: -1px; line-height: 1.15;
+      }
+      #outro-sub {
+        top: 488px; left: 0; width: 1280px;
+        font-size: 16px; color: rgba(255,255,255,0.56);
+        text-align: center; font-weight: 500;
+        letter-spacing: 3px; text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="20"
+      data-width="1280"
+      data-height="720"
+    >
+      <!-- Always-on bg layers (not clips) -->
+      <div id="dark-bg"></div>
+
+      <!-- Light bg clip — framework controls visibility; inner div animated by GSAP -->
+      <div id="light-bg" class="clip" data-start="11.9" data-duration="5.6" data-track-index="1">
+        <div id="light-bg-inner"></div>
+      </div>
+
+      <!-- ══ SCENE 1: Hook (0–3.5s) ══ -->
+      <div id="hook-emoji"  class="clip" data-start="0"   data-duration="3.5" data-track-index="2">🍇</div>
+      <div id="hook-line1"  class="clip" data-start="0"   data-duration="3.5" data-track-index="3">Your açaí order.</div>
+      <div id="hook-line2"  class="clip" data-start="1.2" data-duration="2.3" data-track-index="4">...is now a Telegram bot.</div>
+
+      <!-- ══ SCENE 2: Feature Cards (3.5–12s) ══ -->
+      <div id="scene2-label" class="clip" data-start="3.5" data-duration="8.5" data-track-index="2">What it actually does</div>
+
+      <div id="card1" class="feat-card clip" data-start="3.5" data-duration="8.5" data-track-index="5">
+        <div class="feat-icon">📦</div>
+        <div class="feat-title">Order via Telegram</div>
+        <div class="feat-desc">Pick your session, flavour, and quantity. Confirm. Done. No app download required.</div>
+        <div class="feat-accent">Delivery sessions</div>
+      </div>
+
+      <div id="card2" class="feat-card clip" data-start="3.5" data-duration="8.5" data-track-index="6">
+        <div class="feat-icon">💳</div>
+        <div class="feat-title">Payment Screenshot Verified</div>
+        <div class="feat-desc">Upload your receipt. Bot echoes it back — "Is this the right one?" Admin confirms.</div>
+        <div class="feat-accent">Zero disputes</div>
+      </div>
+
+      <div id="card3" class="feat-card clip" data-start="3.5" data-duration="8.5" data-track-index="7">
+        <div class="feat-icon">⏰</div>
+        <div class="feat-title">1-Hour Auto-Reminder</div>
+        <div class="feat-desc">Everyone in the session gets a personalised reminder. Automatically. Every time.</div>
+        <div class="feat-accent">Zero missed orders</div>
+      </div>
+
+      <!-- ══ SCENE 3: Dashboard (12–17.5s) ══ -->
+      <!-- clip wrapper: just size + position; inner div holds all styling + GSAP anims -->
+      <div id="dashboard-mock" class="clip" data-start="12" data-duration="5.5" data-track-index="8">
+        <div id="dashboard-inner">
+          <div id="dash-header">
+            <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+            <span style="margin-left:10px;">🍇 Açaí Truck — Admin Dashboard</span>
+          </div>
+          <div id="dash-body">
+            <div id="dash-sidebar">
+              <div class="dash-nav-item active">📊 Analytics</div>
+              <div class="dash-nav-item">📦 Orders</div>
+              <div class="dash-nav-item">🚚 Deliveries</div>
+              <div class="dash-nav-item">👥 Customers</div>
+              <div class="dash-nav-item">⚙️ Settings</div>
+            </div>
+            <div id="dash-main">
+              <div class="dash-stats">
+                <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value accent">$2,847</div></div>
+                <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-value">142</div></div>
+                <div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value">28</div></div>
+                <div class="stat-card"><div class="stat-label">Avg Order</div><div class="stat-value accent">$20.05</div></div>
+              </div>
+              <div id="dash-orders-title">Recent Delivery Orders</div>
+              <div class="order-row">
+                <span class="order-badge badge-verified">✓ Verified</span>
+                <span class="customer-name">Ming Hui</span>
+                <span class="order-detail">Original + Strawberry × 2 — PGP Block 26</span>
+                <span class="order-price">$21.90</span>
+              </div>
+              <div class="order-row">
+                <span class="order-badge badge-verified">✓ Verified</span>
+                <span class="customer-name">Sarah Lim</span>
+                <span class="order-detail">Mango Lychee + Granola × 1 — UTown</span>
+                <span class="order-price">$12.90</span>
+              </div>
+              <div class="order-row">
+                <span class="order-badge badge-pending">⏳ Pending</span>
+                <span class="customer-name">Raj Kumar</span>
+                <span class="order-detail">Classic Açaí + Coconut × 3 — PGP Block 26</span>
+                <span class="order-price">$35.70</span>
+              </div>
+              <div class="order-row">
+                <span class="order-badge badge-verified">✓ Verified</span>
+                <span class="customer-name">Jess Tan</span>
+                <span class="order-detail">Pitaya + Almond Butter × 1 — UTown</span>
+                <span class="order-price">$14.90</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SCENE 4: Outro (17.5–20s) ══ -->
+      <div id="outro-bar"     class="clip" data-start="17.5" data-duration="2.5" data-track-index="2"></div>
+      <div id="outro-emoji"   class="clip" data-start="17.5" data-duration="2.5" data-track-index="3">🍇</div>
+      <div id="outro-tagline" class="clip" data-start="17.5" data-duration="2.5" data-track-index="4">Scrappy. Functional.<br>Delicious.</div>
+      <div id="outro-sub"     class="clip" data-start="18.2" data-duration="1.8" data-track-index="9">The Açaí Truck · NUS</div>
+
+      <!-- Audio -->
+      <audio
+        id="bgm"
+        data-start="0"
+        data-duration="20"
+        data-volume="0.55"
+        data-fade-out="1.5"
+        src="assets/music/happy-beats-business-moves-vol-10-by-ende-dot-app.mp3"
+      ></audio>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // ── SCENE 1: Hook ──────────────────────────────────────
+      tl.fromTo("#hook-emoji",
+        { opacity: 0, scale: 0.3, y: 30 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: "back.out(2)" }, 0);
+
+      tl.fromTo("#hook-line1",
+        { opacity: 0, y: 60 },
+        { opacity: 1, y: 0, duration: 0.55, ease: "expo.out" }, 0.15);
+
+      tl.fromTo("#hook-line2",
+        { opacity: 0, y: 25 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 1.2);
+
+      // Scene 1 exit
+      tl.to(["#hook-emoji", "#hook-line1", "#hook-line2"],
+        { opacity: 0, y: -30, duration: 0.35, ease: "power2.in", stagger: 0.05 }, 3.0);
+
+      // ── SCENE 2: Feature Cards ──────────────────────────────
+      tl.fromTo("#scene2-label", { opacity: 0 }, { opacity: 1, duration: 0.4 }, 3.5);
+
+      tl.fromTo("#card1",
+        { opacity: 0, y: 50, scale: 0.94 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: "power3.out" }, 4.0);
+      tl.fromTo("#card2",
+        { opacity: 0, y: 50, scale: 0.94 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: "power3.out" }, 4.3);
+      tl.fromTo("#card3",
+        { opacity: 0, y: 50, scale: 0.94 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: "power3.out" }, 4.6);
+
+      // Scene 2 exit
+      tl.to(["#scene2-label", "#card1", "#card2", "#card3"],
+        { opacity: 0, y: -20, duration: 0.4, ease: "power2.in", stagger: 0.05 }, 11.5);
+      // Hard kill — prevent stale opacity on non-linear seek
+      tl.set(["#scene2-label", "#card1", "#card2", "#card3"], { opacity: 0 }, 11.90);
+
+      // ── SCENE 3: Dashboard ──────────────────────────────────
+      // Animate #light-bg-inner (inner div) — clip wrapper visibility managed by framework
+      tl.fromTo("#light-bg-inner", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 11.9);
+
+      // Animate #dashboard-inner (inner div) — clip wrapper visibility managed by framework
+      tl.fromTo("#dashboard-inner",
+        { opacity: 0, y: 60, scale: 0.97 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power3.out" }, 12.1);
+
+      // Dashboard exit
+      tl.to("#dashboard-inner", { opacity: 0, y: -30, duration: 0.4, ease: "power2.in" }, 17.1);
+      tl.to("#light-bg-inner", { opacity: 0, duration: 0.4 }, 17.1);
+      // Hard kills at clip boundary
+      tl.set("#dashboard-inner", { opacity: 0 }, 17.50);
+      tl.set("#light-bg-inner", { opacity: 0 }, 17.50);
+
+      // ── SCENE 4: Outro ──────────────────────────────────────
+      tl.fromTo("#outro-bar",
+        { opacity: 0, scaleX: 0, transformOrigin: "left center" },
+        { opacity: 1, scaleX: 1, duration: 0.5, ease: "power2.out" }, 17.5);
+
+      tl.fromTo("#outro-emoji",
+        { opacity: 0, scale: 0.5 },
+        { opacity: 1, scale: 1, duration: 0.4, ease: "back.out(2)" }, 17.6);
+
+      tl.fromTo("#outro-tagline",
+        { opacity: 0, y: 30 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "expo.out" }, 17.8);
+
+      tl.fromTo("#outro-sub",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.4 }, 18.2);
+
+      // Final fade
+      tl.to(["#outro-emoji", "#outro-tagline", "#outro-sub", "#outro-bar"],
+        { opacity: 0, duration: 0.3 }, 19.7);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

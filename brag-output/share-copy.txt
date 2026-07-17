@@ -1,0 +1,2 @@
+We built a Telegram bot so NUS students can order açaí without downloading an app.
+Payment screenshot verification, 1-hour auto-reminders, and a live admin dashboard — all for a campus açaí truck.
