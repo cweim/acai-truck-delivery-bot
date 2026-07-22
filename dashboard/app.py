@@ -217,9 +217,9 @@ async def login_page(request: Request):
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
     return templates.TemplateResponse(
+        request,
         "login.html",
         {
-            "request": request,
             "error": None,
         },
     )
@@ -232,9 +232,9 @@ async def handle_login(request: Request, username: str = Form(...), password: st
         admin_user = authenticate_admin(username, password)
     except HTTPException as exc:
         return templates.TemplateResponse(
+            request,
             "login.html",
             {
-                "request": request,
                 "error": "Invalid username or password",
             },
             status_code=status.HTTP_401_UNAUTHORIZED if exc.status_code == status.HTTP_401_UNAUTHORIZED else status.HTTP_400_BAD_REQUEST,
@@ -302,7 +302,6 @@ async def dashboard_home(request: Request, admin: Dict = Depends(verify_admin_cr
     customer_acquisition = db.get_customer_acquisition_stats(start_date, end_date)
 
     context = {
-        "request": request,
         "admin": admin,
         "date_range": f"{start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}",
         "start_date": start_date.isoformat(),
@@ -325,7 +324,7 @@ async def dashboard_home(request: Request, admin: Dict = Depends(verify_admin_cr
         "customer_acquisition": customer_acquisition,
     }
 
-    return templates.TemplateResponse("analytics.html", context)
+    return templates.TemplateResponse(request, "analytics.html", context)
 
 @app.get("/delivery-orders", response_class=HTMLResponse)
 async def delivery_orders_page(request: Request, admin: Dict = Depends(verify_admin_credentials)):
@@ -342,13 +341,12 @@ async def delivery_orders_page(request: Request, admin: Dict = Depends(verify_ad
         selected_session = sessions[0]
 
     context = {
-        "request": request,
         "admin": admin,
         "sessions": sessions,
         "selected_session": selected_session
     }
 
-    return templates.TemplateResponse("delivery_orders.html", context)
+    return templates.TemplateResponse(request, "delivery_orders.html", context)
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, admin: Dict = Depends(verify_admin_credentials)):
@@ -369,7 +367,6 @@ async def settings_page(request: Request, admin: Dict = Depends(verify_admin_cre
         verification_message = default_verification
 
     context = {
-        "request": request,
         "admin": admin,
         "menu_groups": menu_groups,
         "branding": branding,
@@ -377,7 +374,7 @@ async def settings_page(request: Request, admin: Dict = Depends(verify_admin_cre
         "verification_message": verification_message
     }
 
-    return templates.TemplateResponse("settings.html", context)
+    return templates.TemplateResponse(request, "settings.html", context)
 
 @app.get("/deliveries", response_class=HTMLResponse)
 async def deliveries_page(request: Request, admin: Dict = Depends(verify_admin_credentials)):
@@ -395,13 +392,12 @@ async def deliveries_page(request: Request, admin: Dict = Depends(verify_admin_c
         session['discount_rule'] = db.get_delivery_discount_rule(session.get('session_id'))
 
     context = {
-        "request": request,
         "admin": admin,
         "sessions": sessions,
         "now": datetime.now().isoformat()
     }
 
-    return templates.TemplateResponse("deliveries.html", context)
+    return templates.TemplateResponse(request, "deliveries.html", context)
 
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_page(request: Request, admin: Dict = Depends(verify_admin_credentials)):
@@ -463,7 +459,6 @@ async def analytics_page(request: Request, admin: Dict = Depends(verify_admin_cr
     delivery_count = len(delivery_orders_filtered)
 
     context = {
-        "request": request,
         "admin": admin,
         "date_range": f"{start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}",
         "start_date": start_date.isoformat(),
@@ -488,7 +483,7 @@ async def analytics_page(request: Request, admin: Dict = Depends(verify_admin_cr
         "customer_acquisition": customer_acquisition,
     }
 
-    return templates.TemplateResponse("analytics.html", context)
+    return templates.TemplateResponse(request, "analytics.html", context)
 
 @app.get("/storage", response_class=HTMLResponse)
 async def storage_management_page(request: Request, admin: Dict = Depends(verify_admin_credentials)):
@@ -499,13 +494,12 @@ async def storage_management_page(request: Request, admin: Dict = Depends(verify
     delivery_sessions_breakdown = db.get_delivery_sessions_storage_breakdown()
 
     context = {
-        "request": request,
         "admin": admin,
         "storage_stats": storage_stats,
         "delivery_sessions": delivery_sessions_breakdown,
     }
 
-    return templates.TemplateResponse("storage.html", context)
+    return templates.TemplateResponse(request, "storage.html", context)
 
 # ==================== API ENDPOINTS ====================
 
